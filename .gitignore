@@ -7,3 +7,9 @@ xcuserdata/
 .env.*
 !.env.example
 Secrets.swift
+
+# Python backend
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

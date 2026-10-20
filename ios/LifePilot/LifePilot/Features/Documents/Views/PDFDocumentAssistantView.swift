@@ -18,6 +18,9 @@ struct PDFDocumentAssistantView: View {
     @State private var results: [PDFSearchResult] = []
     @State private var hasSearched = false
     @State private var statusMessage: String?
+    @State private var aiAnswer: String?
+    @State private var aiError: String?
+    @State private var isAskingAI = false
 
     var body: some View {
         ScrollView {
@@ -92,6 +95,40 @@ struct PDFDocumentAssistantView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
                 }
+                if !results.isEmpty {
+                    Button(action: askAI) {
+                        if isAskingAI {
+                            ProgressView("Generating answer…")
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label("Ask AI about these passages", systemImage: "sparkles")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isAskingAI)
+                    .accessibilityIdentifier("askAIDocumentsButton")
+                }
+
+                if let aiError {
+                    Text(aiError)
+                        .font(.subheadline)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+
+                if let aiAnswer {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Label("AI Answer", systemImage: "sparkles")
+                            .font(.headline)
+
+                        Text(aiAnswer)
+                            .textSelection(.enabled)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                }
             }
             .padding(20)
         }
@@ -99,6 +136,37 @@ struct PDFDocumentAssistantView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             documents = PDFDocumentStore.load()
+        }
+    }
+
+    private func askAI() {
+        guard !results.isEmpty else { return }
+
+        isAskingAI = true
+        aiAnswer = nil
+        aiError = nil
+
+        let currentQuestion = question
+        let evidence = results.map { result in
+            AIAnswerRequest.Evidence(
+                document_title: result.documentTitle,
+                page: result.pageNumber,
+                excerpt: result.excerpt
+            )
+        }
+
+        Task { @MainActor in
+            defer { isAskingAI = false }
+
+            do {
+                let response = try await LifePilotAIService().answer(
+                    question: currentQuestion,
+                    evidence: evidence
+                )
+                aiAnswer = response.answer
+            } catch {
+                aiError = error.localizedDescription
+            }
         }
     }
 
