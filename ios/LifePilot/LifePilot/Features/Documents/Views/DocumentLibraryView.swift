@@ -4,8 +4,8 @@ import UniformTypeIdentifiers
 
 private struct StoredPDFDocument: Identifiable, Codable {
     let id: UUID
-    let title: String
-    let category: String
+    var title: String
+    var category: String
     let filename: String
     let importedAt: Date
 
@@ -94,6 +94,38 @@ private enum PDFDocumentStore {
         return documents.sorted { $0.importedAt > $1.importedAt }
     }
 
+    static func update(
+        documentID: UUID,
+        title: String? = nil,
+        category: String? = nil,
+        existing: [StoredPDFDocument]
+    ) throws -> [StoredPDFDocument] {
+        var updated = existing
+        guard let index = updated.firstIndex(where: { $0.id == documentID }) else {
+            return existing
+        }
+
+        if let title { updated[index].title = title }
+        if let category { updated[index].category = category }
+
+        try save(updated)
+        return updated.sorted { $0.importedAt > $1.importedAt }
+    }
+
+    static func delete(
+        _ document: StoredPDFDocument,
+        existing: [StoredPDFDocument]
+    ) throws -> [StoredPDFDocument] {
+        let url = fileURL(for: document)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+
+        let updated = existing.filter { $0.id != document.id }
+        try save(updated)
+        return updated.sorted { $0.importedAt > $1.importedAt }
+    }
+
     private static func category(for title: String) -> String {
         let value = title.lowercased()
 
@@ -121,6 +153,10 @@ struct DocumentLibraryView: View {
     @State private var documents: [StoredPDFDocument] = PDFDocumentStore.load()
     @State private var showingImporter = false
     @State private var errorMessage: String?
+    @State private var documentToRename: StoredPDFDocument?
+    @State private var renameTitle = ""
+    @State private var showingRenameSheet = false
+    @State private var documentToDelete: StoredPDFDocument?
 
     private var categories: [String] {
         ["All"] + Array(Set(documents.map(\.category))).sorted()
@@ -229,6 +265,39 @@ struct DocumentLibraryView: View {
                                 DocumentRowView(document: document)
                             }
                             .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    documentToDelete = document
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+
+                                Button {
+                                    documentToRename = document
+                                    renameTitle = document.title
+                                    showingRenameSheet = true
+                                } label: {
+                                    Label("Rename", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+
+                                Menu {
+                                    ForEach(["Finance", "Study", "Personal", "Other"], id: \.self) { category in
+                                        Button {
+                                            updateCategory(document, to: category)
+                                        } label: {
+                                            if document.category == category {
+                                                Label(category, systemImage: "checkmark")
+                                            } else {
+                                                Text(category)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Label("Category", systemImage: "tag")
+                                }
+                                .tint(.orange)
+                            }
                         }
                     }
                 }
@@ -237,6 +306,42 @@ struct DocumentLibraryView: View {
         }
         .navigationTitle("Documents")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showingRenameSheet) {
+            NavigationStack {
+                Form {
+                    TextField("Document name", text: $renameTitle)
+                        .textInputAutocapitalization(.words)
+                }
+                .navigationTitle("Rename PDF")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            showingRenameSheet = false
+                            documentToRename = nil
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { saveRename() }
+                            .disabled(renameTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .confirmationDialog(
+            "Delete this PDF?",
+            isPresented: Binding(
+                get: { documentToDelete != nil },
+                set: { if !$0 { documentToDelete = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deleteSelectedDocument() }
+            Button("Cancel", role: .cancel) { documentToDelete = nil }
+        } message: {
+            Text("This removes the PDF from LifePilot.")
+        }
         .fileImporter(
             isPresented: $showingImporter,
             allowedContentTypes: [.pdf],
@@ -264,6 +369,45 @@ struct DocumentLibraryView: View {
             Button("OK", role: .cancel) { errorMessage = nil }
         } message: {
             Text(errorMessage ?? "")
+        }
+    }
+
+    private func saveRename() {
+        guard let document = documentToRename else { return }
+        let title = renameTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            documents = try PDFDocumentStore.update(
+                documentID: document.id,
+                title: title,
+                existing: documents
+            )
+            showingRenameSheet = false
+            documentToRename = nil
+        } catch {
+            errorMessage = "Could not rename this PDF. \\(error.localizedDescription)"
+        }
+    }
+
+    private func updateCategory(_ document: StoredPDFDocument, to category: String) {
+        do {
+            documents = try PDFDocumentStore.update(
+                documentID: document.id,
+                category: category,
+                existing: documents
+            )
+        } catch {
+            errorMessage = "Could not update the category. \\(error.localizedDescription)"
+        }
+    }
+
+    private func deleteSelectedDocument() {
+        guard let document = documentToDelete else { return }
+        do {
+            documents = try PDFDocumentStore.delete(document, existing: documents)
+            documentToDelete = nil
+        } catch {
+            errorMessage = "Could not delete this PDF. \\(error.localizedDescription)"
+            documentToDelete = nil
         }
     }
 }
