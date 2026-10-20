@@ -46,17 +46,6 @@ struct ContentView: View {
     }
 }
 
-private struct DocumentLibraryView: View {
-    var body: some View {
-        ContentPlaceholderView(
-            title: "Documents",
-            subtitle: "Your important documents, organised in one place.",
-            symbol: "doc.text",
-            features: ["Browse documents", "Organise by category", "Search your files"]
-        )
-    }
-}
-
 private struct AssistantView: View {
     var body: some View {
         ContentPlaceholderView(
