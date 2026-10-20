@@ -50,6 +50,9 @@ struct DashboardView: View {
                 Text(viewModel.selectedActionMessage ?? "")
             }
         }
+        .onAppear {
+            viewModel.refreshDocuments()
+        }
         .tint(ink)
     }
 

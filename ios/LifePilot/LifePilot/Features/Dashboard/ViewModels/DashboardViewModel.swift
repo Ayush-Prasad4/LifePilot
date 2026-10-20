@@ -12,7 +12,37 @@ final class DashboardViewModel: ObservableObject {
     init(repository: any DashboardRepository = DashboardService()) {
         self.repository = repository
         self.tasks = repository.fetchTasks()
-        self.documents = repository.fetchDocuments()
+        self.documents = Self.loadStoredDocuments()
+    }
+
+    func refreshDocuments() {
+        documents = Self.loadStoredDocuments()
+    }
+
+    private static func loadStoredDocuments() -> [LifeDocument] {
+        PDFDocumentStore.load().map { document in
+            let tint: Color
+
+            switch document.category.lowercased() {
+            case "finance":
+                tint = .green
+            case "study", "education":
+                tint = .purple
+            case "personal", "identity":
+                tint = .blue
+            default:
+                tint = .orange
+            }
+
+            return LifeDocument(
+                id: document.id,
+                title: document.title,
+                category: document.category,
+                updatedLabel: document.updatedLabel,
+                symbol: "doc.text",
+                tint: tint
+            )
+        }
     }
 
     var filteredDocuments: [LifeDocument] {
