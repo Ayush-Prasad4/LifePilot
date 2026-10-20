@@ -259,44 +259,51 @@ struct DocumentLibraryView: View {
                 } else {
                     LazyVStack(spacing: 12) {
                         ForEach(filteredDocuments) { document in
-                            NavigationLink {
-                                PDFDocumentDetailView(document: document)
-                            } label: {
-                                DocumentRowView(document: document)
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    documentToDelete = document
+                            HStack(spacing: 8) {
+                                NavigationLink {
+                                    PDFDocumentDetailView(document: document)
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    DocumentRowView(document: document)
                                 }
-
-                                Button {
-                                    documentToRename = document
-                                    renameTitle = document.title
-                                    showingRenameSheet = true
-                                } label: {
-                                    Label("Rename", systemImage: "pencil")
-                                }
-                                .tint(.blue)
+                                .buttonStyle(.plain)
 
                                 Menu {
-                                    ForEach(["Finance", "Study", "Personal", "Other"], id: \.self) { category in
-                                        Button {
-                                            updateCategory(document, to: category)
-                                        } label: {
-                                            if document.category == category {
-                                                Label(category, systemImage: "checkmark")
-                                            } else {
-                                                Text(category)
+                                    Button {
+                                        documentToRename = document
+                                        renameTitle = document.title
+                                        showingRenameSheet = true
+                                    } label: {
+                                        Label("Rename", systemImage: "pencil")
+                                    }
+
+                                    Menu {
+                                        ForEach(["Finance", "Study", "Personal", "Other"], id: \.self) { category in
+                                            Button {
+                                                updateCategory(document, to: category)
+                                            } label: {
+                                                if document.category == category {
+                                                    Label(category, systemImage: "checkmark")
+                                                } else {
+                                                    Text(category)
+                                                }
                                             }
                                         }
+                                    } label: {
+                                        Label("Change Category", systemImage: "tag")
+                                    }
+
+                                    Button(role: .destructive) {
+                                        documentToDelete = document
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
                                     }
                                 } label: {
-                                    Label("Category", systemImage: "tag")
+                                    Image(systemName: "ellipsis.circle")
+                                        .font(.title2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 40, height: 52)
+                                        .contentShape(Rectangle())
                                 }
-                                .tint(.orange)
                             }
                         }
                     }
