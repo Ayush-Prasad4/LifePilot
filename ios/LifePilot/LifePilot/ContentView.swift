@@ -48,12 +48,7 @@ struct ContentView: View {
 
 private struct AssistantView: View {
     var body: some View {
-        ContentPlaceholderView(
-            title: "AI Assistant",
-            subtitle: "Your personal assistant for everyday information.",
-            symbol: "sparkles",
-            features: ["Ask questions", "Understand documents", "Get helpful summaries"]
-        )
+        PDFDocumentAssistantView()
     }
 }
 

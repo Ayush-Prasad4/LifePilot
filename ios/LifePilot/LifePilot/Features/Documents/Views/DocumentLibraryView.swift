@@ -2,7 +2,7 @@ import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
 
-private struct StoredPDFDocument: Identifiable, Codable {
+struct StoredPDFDocument: Identifiable, Codable {
     let id: UUID
     var title: String
     var category: String
@@ -22,7 +22,7 @@ private struct StoredPDFDocument: Identifiable, Codable {
     }
 }
 
-private enum PDFDocumentStore {
+enum PDFDocumentStore {
     private static let metadataFilename = "lifepilot-documents.json"
 
     private static var directory: URL {
