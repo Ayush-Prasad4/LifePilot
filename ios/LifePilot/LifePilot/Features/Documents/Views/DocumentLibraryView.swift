@@ -22,6 +22,10 @@ struct StoredPDFDocument: Identifiable, Codable, Sendable {
     }
 }
 
+enum PDFDocumentStoreError: Error {
+    case invalidPDF
+}
+
 enum PDFDocumentStore {
     private static let metadataFilename = "lifepilot-documents.json"
 
@@ -57,41 +61,50 @@ enum PDFDocumentStore {
         existing: [StoredPDFDocument]
     ) throws -> [StoredPDFDocument] {
         var documents = existing
+        var copiedFiles: [URL] = []
 
-        for sourceURL in urls {
-            let hasAccess = sourceURL.startAccessingSecurityScopedResource()
-            defer {
-                if hasAccess {
-                    sourceURL.stopAccessingSecurityScopedResource()
+        do {
+            for sourceURL in urls {
+                let hasAccess = sourceURL.startAccessingSecurityScopedResource()
+                defer {
+                    if hasAccess {
+                        sourceURL.stopAccessingSecurityScopedResource()
+                    }
                 }
-            }
 
-            guard sourceURL.pathExtension.lowercased() == "pdf" else {
-                continue
-            }
+                guard sourceURL.pathExtension.lowercased() == "pdf" else {
+                    continue
+                }
 
-            let id = UUID()
-            let filename = "\(id.uuidString).pdf"
-            let destination = directory.appendingPathComponent(filename)
+                guard let pdf = PDFDocument(url: sourceURL), pdf.pageCount > 0 else {
+                    throw PDFDocumentStoreError.invalidPDF
+                }
 
-            do {
+                let id = UUID()
+                let filename = "\(id.uuidString).pdf"
+                let destination = directory.appendingPathComponent(filename)
+
                 try FileManager.default.copyItem(at: sourceURL, to: destination)
-            } catch {
-                throw error
+                copiedFiles.append(destination)
+
+                let title = sourceURL.deletingPathExtension().lastPathComponent
+                documents.append(
+                    StoredPDFDocument(
+                        title: title.isEmpty ? "Untitled PDF" : title,
+                        category: category(for: title),
+                        filename: filename
+                    )
+                )
             }
 
-            let title = sourceURL.deletingPathExtension().lastPathComponent
-            documents.append(
-                StoredPDFDocument(
-                    title: title.isEmpty ? "Untitled PDF" : title,
-                    category: category(for: title),
-                    filename: filename
-                )
-            )
+            try save(documents)
+            return documents.sorted { $0.importedAt > $1.importedAt }
+        } catch {
+            for url in copiedFiles {
+                try? FileManager.default.removeItem(at: url)
+            }
+            throw error
         }
-
-        try save(documents)
-        return documents.sorted { $0.importedAt > $1.importedAt }
     }
 
     static func update(

@@ -1,8 +1,27 @@
+import Foundation
 import Testing
 @testable import LifePilot
 
 @MainActor
 struct LifePilotTests {
+    @Test func importingInvalidPDFThrowsWithoutImportingIt() throws {
+        let temporaryURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("pdf")
+
+        try Data("This is not a PDF".utf8).write(to: temporaryURL)
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+
+        var didThrow = false
+        do {
+            _ = try PDFDocumentStore.importPDFs(from: [temporaryURL], existing: [])
+        } catch {
+            didThrow = true
+        }
+
+        #expect(didThrow)
+    }
+
     @Test func dashboardLoadsInitialData() {
         let viewModel = DashboardViewModel(useStoredDocuments: false)
 
