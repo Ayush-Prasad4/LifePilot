@@ -141,8 +141,18 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 15) {
             sectionHeading("Coming up", subtitle: "Things worth keeping an eye on")
 
-            ForEach(viewModel.tasks) { task in
-                HStack(spacing: 14) {
+            if viewModel.tasks.isEmpty {
+                ContentUnavailableView(
+                    "All caught up",
+                    systemImage: "checkmark.circle",
+                    description: Text("Your upcoming tasks will appear here.")
+                )
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 130)
+                .background(.white, in: RoundedRectangle(cornerRadius: 20))
+            } else {
+                ForEach(viewModel.tasks) { task in
+                    HStack(spacing: 14) {
                     Image(systemName: task.symbol)
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(task.priority == .important ? .orange : .blue)
@@ -172,6 +182,7 @@ struct DashboardView: View {
                 }
                 .padding(15)
                 .background(.white, in: RoundedRectangle(cornerRadius: 19))
+                }
             }
         }
     }

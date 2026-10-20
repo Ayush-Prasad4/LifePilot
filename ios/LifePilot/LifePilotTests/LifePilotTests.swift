@@ -43,4 +43,23 @@ struct LifePilotTests {
 
         #expect(viewModel.filteredDocuments.isEmpty)
     }
+
+    @Test func dashboardSupportsEmptyTasks() {
+        let viewModel = DashboardViewModel(repository: EmptyTasksRepository())
+
+        #expect(viewModel.tasks.isEmpty)
+        #expect(viewModel.documents.count == 3)
+    }
+
+}
+
+
+private struct EmptyTasksRepository: DashboardRepository {
+    func fetchTasks() -> [LifeTask] {
+        []
+    }
+
+    func fetchDocuments() -> [LifeDocument] {
+        DashboardService().fetchDocuments()
+    }
 }
