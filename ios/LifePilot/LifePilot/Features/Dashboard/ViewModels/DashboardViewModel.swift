@@ -8,19 +8,43 @@ final class DashboardViewModel: ObservableObject {
     @Published var selectedActionMessage: String?
 
     private let repository: any DashboardRepository
+    private let useStoredDocuments: Bool
 
-    init(repository: any DashboardRepository = DashboardService()) {
+    init(
+        repository: any DashboardRepository = DashboardService(),
+        useStoredDocuments: Bool = true
+    ) {
         self.repository = repository
         self.tasks = repository.fetchTasks()
-        self.documents = Self.loadStoredDocuments()
+        self.documents = Self.loadDocuments(
+            repository: repository,
+            useStoredDocuments: useStoredDocuments
+        )
+        self.useStoredDocuments = useStoredDocuments
     }
 
     func refreshDocuments() {
-        documents = Self.loadStoredDocuments()
+        documents = Self.loadDocuments(
+            repository: repository,
+            useStoredDocuments: useStoredDocuments
+        )
     }
 
-    private static func loadStoredDocuments() -> [LifeDocument] {
-        PDFDocumentStore.load().map { document in
+    private static func loadDocuments(
+        repository: any DashboardRepository,
+        useStoredDocuments: Bool
+    ) -> [LifeDocument] {
+        guard useStoredDocuments else {
+            return repository.fetchDocuments()
+        }
+
+        let storedDocuments = PDFDocumentStore.load()
+
+        guard !storedDocuments.isEmpty else {
+            return repository.fetchDocuments()
+        }
+
+        return storedDocuments.map { document in
             let tint: Color
 
             switch document.category.lowercased() {
@@ -44,6 +68,7 @@ final class DashboardViewModel: ObservableObject {
             )
         }
     }
+
 
     var filteredDocuments: [LifeDocument] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)

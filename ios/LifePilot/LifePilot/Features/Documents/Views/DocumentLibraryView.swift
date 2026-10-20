@@ -2,7 +2,7 @@ import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
 
-struct StoredPDFDocument: Identifiable, Codable {
+struct StoredPDFDocument: Identifiable, Codable, Sendable {
     let id: UUID
     var title: String
     var category: String

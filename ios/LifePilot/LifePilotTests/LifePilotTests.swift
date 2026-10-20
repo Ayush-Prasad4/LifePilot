@@ -4,14 +4,14 @@ import Testing
 @MainActor
 struct LifePilotTests {
     @Test func dashboardLoadsInitialData() {
-        let viewModel = DashboardViewModel()
+        let viewModel = DashboardViewModel(useStoredDocuments: false)
 
         #expect(viewModel.tasks.count == 2)
         #expect(viewModel.documents.count == 3)
     }
 
     @Test func emptySearchShowsAllDocuments() {
-        let viewModel = DashboardViewModel()
+        let viewModel = DashboardViewModel(useStoredDocuments: false)
 
         viewModel.searchText = ""
 
@@ -19,7 +19,7 @@ struct LifePilotTests {
     }
 
     @Test func searchFindsDocumentByTitle() {
-        let viewModel = DashboardViewModel()
+        let viewModel = DashboardViewModel(useStoredDocuments: false)
 
         viewModel.searchText = "Personal"
 
@@ -28,7 +28,7 @@ struct LifePilotTests {
     }
 
     @Test func searchFindsDocumentByCategory() {
-        let viewModel = DashboardViewModel()
+        let viewModel = DashboardViewModel(useStoredDocuments: false)
 
         viewModel.searchText = "Finance"
 
@@ -37,7 +37,7 @@ struct LifePilotTests {
     }
 
     @Test func unmatchedSearchReturnsNoDocuments() {
-        let viewModel = DashboardViewModel()
+        let viewModel = DashboardViewModel(useStoredDocuments: false)
 
         viewModel.searchText = "NoMatchingDocument"
 
@@ -45,7 +45,7 @@ struct LifePilotTests {
     }
 
     @Test func dashboardSupportsEmptyTasks() {
-        let viewModel = DashboardViewModel(repository: EmptyTasksRepository())
+        let viewModel = DashboardViewModel(repository: EmptyTasksRepository(), useStoredDocuments: false)
 
         #expect(viewModel.tasks.isEmpty)
         #expect(viewModel.documents.count == 3)
