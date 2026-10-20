@@ -5,6 +5,17 @@ import SwiftUI
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
 
+    let onAddDocument: () -> Void
+    let onAskAI: () -> Void
+
+    init(
+        onAddDocument: @escaping () -> Void = {},
+        onAskAI: @escaping () -> Void = {}
+    ) {
+        self.onAddDocument = onAddDocument
+        self.onAskAI = onAskAI
+    }
+
     private let ink = Color(red: 0.12, green: 0.17, blue: 0.25)
     private let canvas = Color(red: 0.96, green: 0.97, blue: 0.98)
 
@@ -240,7 +251,7 @@ struct DashboardView: View {
                     symbol: "plus",
                     tint: .blue
                 ) {
-                    viewModel.selectAction("Add document")
+                    onAddDocument()
                 }
 
                 actionButton(
@@ -248,7 +259,7 @@ struct DashboardView: View {
                     symbol: "sparkles",
                     tint: .purple
                 ) {
-                    viewModel.selectAction("AI assistant")
+                    onAskAI()
                 }
             }
         }

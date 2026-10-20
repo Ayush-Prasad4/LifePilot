@@ -5,7 +5,10 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            DashboardView()
+            DashboardView(
+                onAddDocument: { selectedTab = 1 },
+                onAskAI: { selectedTab = 2 }
+            )
                 .tabItem {
                     Label("Home", systemImage: "house")
                 }
