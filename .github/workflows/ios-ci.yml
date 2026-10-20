@@ -1,0 +1,42 @@
+name: iOS CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Show available simulators
+        run: xcrun simctl list devices available
+
+      - name: Build and run tests
+        run: |
+          xcodebuild test \
+            -project ios/LifePilot/LifePilot.xcodeproj \
+            -scheme LifePilot \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -parallel-testing-enabled NO \
+            -derivedDataPath "$RUNNER_TEMP/LifePilotDerivedData" \
+            CODE_SIGNING_ALLOWED=NO
