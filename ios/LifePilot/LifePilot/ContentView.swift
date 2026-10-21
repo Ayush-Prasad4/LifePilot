@@ -94,15 +94,38 @@ struct CalendarTaskStore {
     }
 }
 
+private enum PlannerFilter: String, CaseIterable {
+    case today = "Today"
+    case upcoming = "Upcoming"
+    case completed = "Completed"
+    case all = "All"
+}
+
 private struct CalendarView: View {
     @State private var tasks = CalendarTaskStore().load()
-    @State private var showingAddTask = false
+    @State private var showingEditor = false
+    @State private var editingTask: PlannerTask?
+    @State private var filter: PlannerFilter = .today
+    @State private var selectedDate = Calendar.current.startOfDay(for: Date())
 
-    private var sortedTasks: [PlannerTask] {
-        tasks.sorted {
-            if $0.isCompleted != $1.isCompleted {
-                return !$0.isCompleted
+    private var visibleTasks: [PlannerTask] {
+        let calendar = Calendar.current
+        let filtered = tasks.filter { task in
+            switch filter {
+            case .today:
+                return calendar.isDate(task.dueDate, inSameDayAs: selectedDate)
+                    && !task.isCompleted
+            case .upcoming:
+                return task.dueDate >= calendar.startOfDay(for: Date())
+                    && !task.isCompleted
+            case .completed:
+                return task.isCompleted
+            case .all:
+                return true
             }
+        }
+        return filtered.sorted {
+            if $0.isCompleted != $1.isCompleted { return !$0.isCompleted }
             return $0.dueDate < $1.dueDate
         }
     }
@@ -110,6 +133,17 @@ private struct CalendarView: View {
     var body: some View {
         List {
             Section {
+                Picker("Filter tasks", selection: $filter) {
+                    ForEach(PlannerFilter.allCases, id: \.self) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if filter == .today {
+                    DatePicker("Selected day", selection: $selectedDate, displayedComponents: .date)
+                }
+
                 HStack {
                     summary("Open", value: tasks.filter { !$0.isCompleted }.count)
                     Spacer()
@@ -118,41 +152,42 @@ private struct CalendarView: View {
                 .padding(.vertical, 6)
             }
 
-            Section("Your tasks") {
-                if sortedTasks.isEmpty {
+            Section(filter.rawValue) {
+                if visibleTasks.isEmpty {
                     ContentUnavailableView(
-                        "No tasks yet",
-                        systemImage: "calendar.badge.plus",
-                        description: Text("Tap + to plan your first task.")
+                        "No tasks here",
+                        systemImage: "calendar",
+                        description: Text("Add a task or choose another filter.")
                     )
                 }
 
-                ForEach(sortedTasks) { task in
+                ForEach(visibleTasks) { task in
                     HStack(spacing: 12) {
                         Button {
                             update(task) { $0.isCompleted.toggle() }
                         } label: {
                             Image(systemName: task.isCompleted
-                                  ? "checkmark.circle.fill"
-                                  : "circle")
+                                  ? "checkmark.circle.fill" : "circle")
                                 .font(.title2)
                                 .foregroundStyle(task.isCompleted ? .green : .secondary)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(
-                            task.isCompleted ? "Mark incomplete" : "Complete task"
-                        )
+                        .accessibilityLabel(task.isCompleted ? "Mark incomplete" : "Complete task")
 
                         VStack(alignment: .leading, spacing: 5) {
                             Text(task.title)
                                 .font(.body.weight(.medium))
                                 .strikethrough(task.isCompleted)
 
-                            Text(task.dueDate.formatted(
-                                date: .abbreviated, time: .shortened
-                            ))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            Text(task.dueDate.formatted(date: .abbreviated, time: .shortened))
+                                .font(.caption)
+                                .foregroundStyle(isOverdue(task) ? .red : .secondary)
+
+                            if isOverdue(task) {
+                                Text("Overdue")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(.red)
+                            }
                         }
 
                         Spacer()
@@ -166,6 +201,11 @@ private struct CalendarView: View {
                             .clipShape(Capsule())
                     }
                     .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        editingTask = task
+                        showingEditor = true
+                    }
                     .swipeActions {
                         Button(role: .destructive) {
                             tasks.removeAll { $0.id == task.id }
@@ -181,19 +221,25 @@ private struct CalendarView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingAddTask = true
+                    editingTask = nil
+                    showingEditor = true
                 } label: {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel("Add task")
             }
         }
-        .sheet(isPresented: $showingAddTask) {
+        .sheet(isPresented: $showingEditor, onDismiss: { editingTask = nil }) {
             NavigationStack {
-                PlannerTaskEditor { title, date, priority in
-                    tasks.append(
-                        PlannerTask(title: title, dueDate: date, priority: priority)
-                    )
+                PlannerTaskEditor(task: editingTask) { title, date, priority in
+                    if let existing = editingTask,
+                       let index = tasks.firstIndex(where: { $0.id == existing.id }) {
+                        tasks[index].title = title
+                        tasks[index].dueDate = date
+                        tasks[index].priority = priority
+                    } else {
+                        tasks.append(PlannerTask(title: title, dueDate: date, priority: priority))
+                    }
                     persist()
                 }
             }
@@ -202,11 +248,8 @@ private struct CalendarView: View {
 
     private func summary(_ title: String, value: Int) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(value)")
-                .font(.title2.bold())
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Text("\(value)").font(.title2.bold())
+            Text(title).font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -218,13 +261,13 @@ private struct CalendarView: View {
         }
     }
 
-    private func update(
-        _ task: PlannerTask,
-        change: (inout PlannerTask) -> Void
-    ) {
-        guard let index = tasks.firstIndex(where: { $0.id == task.id }) else {
-            return
-        }
+    private func isOverdue(_ task: PlannerTask) -> Bool {
+        !task.isCompleted && task.dueDate < Date()
+            && !Calendar.current.isDateInToday(task.dueDate)
+    }
+
+    private func update(_ task: PlannerTask, change: (inout PlannerTask) -> Void) {
+        guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
         change(&tasks[index])
         persist()
     }
@@ -236,23 +279,26 @@ private struct CalendarView: View {
 
 private struct PlannerTaskEditor: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var dueDate = Date()
-    @State private var priority: PlannerPriority = .normal
+    @State private var title: String
+    @State private var dueDate: Date
+    @State private var priority: PlannerPriority
 
+    let task: PlannerTask?
     let onSave: (String, Date, PlannerPriority) -> Void
+
+    init(task: PlannerTask? = nil, onSave: @escaping (String, Date, PlannerPriority) -> Void) {
+        self.task = task
+        self.onSave = onSave
+        _title = State(initialValue: task?.title ?? "")
+        _dueDate = State(initialValue: task?.dueDate ?? Date())
+        _priority = State(initialValue: task?.priority ?? .normal)
+    }
 
     var body: some View {
         Form {
             Section("Task details") {
                 TextField("What do you need to do?", text: $title)
-
-                DatePicker(
-                    "Due date",
-                    selection: $dueDate,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-
+                DatePicker("Due date", selection: $dueDate, displayedComponents: [.date, .hourAndMinute])
                 Picker("Priority", selection: $priority) {
                     ForEach(PlannerPriority.allCases, id: \.self) { item in
                         Text(item.rawValue).tag(item)
@@ -260,7 +306,7 @@ private struct PlannerTaskEditor: View {
                 }
             }
         }
-        .navigationTitle("New task")
+        .navigationTitle(task == nil ? "New task" : "Edit task")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -268,8 +314,7 @@ private struct PlannerTaskEditor: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
-                    onSave(title.trimmingCharacters(in: .whitespacesAndNewlines),
-                           dueDate, priority)
+                    onSave(title.trimmingCharacters(in: .whitespacesAndNewlines), dueDate, priority)
                     dismiss()
                 }
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
