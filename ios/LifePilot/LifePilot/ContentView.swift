@@ -7,7 +7,7 @@ struct ContentView: View {
         TabView(selection: $selectedTab) {
             DashboardView(
                 onAddDocument: { selectedTab = 1 },
-                onAskAI: { selectedTab = 2 }
+                onAskAI: { selectedTab = 3 }
             )
                 .tabItem {
                     Label("Home", systemImage: "house")
@@ -31,12 +31,20 @@ struct ContentView: View {
             .tag(2)
 
             NavigationStack {
+                GeneralChatView()
+            }
+            .tabItem {
+                Label("Chat", systemImage: "bubble.left.and.bubble.right")
+            }
+            .tag(3)
+
+            NavigationStack {
                 CalendarView()
             }
             .tabItem {
                 Label("Calendar", systemImage: "calendar")
             }
-            .tag(3)
+            .tag(4)
 
             NavigationStack {
                 SettingsView()
@@ -44,7 +52,7 @@ struct ContentView: View {
             .tabItem {
                 Label("Settings", systemImage: "gearshape")
             }
-            .tag(4)
+            .tag(5)
         }
     }
 }

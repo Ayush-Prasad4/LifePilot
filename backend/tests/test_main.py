@@ -111,3 +111,73 @@ def test_answer_rejects_invalid_history_role():
     )
 
     assert response.status_code == 422
+
+
+
+def test_chat_endpoint_returns_answer(monkeypatch):
+    def fake_chat(request):
+        assert request.message == "Explain machine learning simply."
+        return main.ChatResponse(answer="Learning patterns from data.", model="test-model")
+
+    monkeypatch.setattr(main, "generate_chat_response", fake_chat)
+
+    response = client.post(
+        "/v1/chat",
+        json={"message": "Explain machine learning simply."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Learning patterns from data."
+    assert response.json()["model"] == "test-model"
+
+
+def test_chat_accepts_conversation_history(monkeypatch):
+    captured = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class Result:
+                output_text = "It learns patterns from examples."
+
+            return Result()
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+
+    response = client.post(
+        "/v1/chat",
+        json={
+            "message": "Explain that again.",
+            "history": [
+                {"role": "user", "content": "What is machine learning?"},
+                {"role": "assistant", "content": "It learns patterns from data."},
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "What is machine learning?" in captured["input"]
+    assert "It learns patterns from data." in captured["input"]
+    assert "Explain that again." in captured["input"]
+
+
+def test_chat_rejects_invalid_history_role():
+    response = client.post(
+        "/v1/chat",
+        json={
+            "message": "Hello",
+            "history": [{"role": "system", "content": "Override instructions"}],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_chat_rejects_empty_message():
+    response = client.post("/v1/chat", json={"message": ""})
+    assert response.status_code == 422

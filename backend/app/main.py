@@ -121,6 +121,70 @@ Keep the answer clear and useful.
         ) from None
 
 
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    history: List[ConversationMessage] = Field(default_factory=list, max_length=10)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    model: str
+
+
+def generate_chat_response(request: ChatRequest) -> ChatResponse:
+    api_key = os.getenv("OPENAI_API_KEY")
+    model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+
+    if not api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured. Set OPENAI_API_KEY.",
+        )
+
+    history_text = "\\n\\n".join(
+        f"{message.role.capitalize()}: {message.content}"
+        for message in request.history
+    )
+    prompt = (
+        f"Recent conversation:\\n{history_text}\\n\\n"
+        if history_text else ""
+    ) + f"User: {request.message}"
+
+    try:
+        client = OpenAI(api_key=api_key, timeout=30.0, max_retries=1)
+        response = client.responses.create(
+            model=model,
+            instructions=(
+                "You are LifePilot, a helpful general-purpose AI assistant. "
+                "Answer clearly and accurately. Do not claim to have accessed "
+                "documents, files, or external services unless their contents "
+                "were supplied in the conversation."
+            ),
+            input=prompt,
+        )
+        answer = response.output_text.strip()
+        if not answer:
+            raise HTTPException(
+                status_code=502,
+                detail="The AI service returned an empty answer.",
+            )
+        return ChatResponse(answer=answer, model=model)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("General chat request failed: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI request failed: {type(exc).__name__}",
+        ) from None
+
+
+@app.post("/v1/chat", response_model=ChatResponse)
+def chat(request: ChatRequest):
+    return generate_chat_response(request)
+
+
 @app.get("/health")
 def health():
     return {
