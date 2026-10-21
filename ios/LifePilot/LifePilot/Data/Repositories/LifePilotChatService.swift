@@ -6,8 +6,16 @@ struct LifePilotChatRequest: Encodable {
         let content: String
     }
 
+    struct TaskContext: Encodable {
+        let title: String
+        let dueDate: String
+        let priority: String
+        let isCompleted: Bool
+    }
+
     let message: String
     let history: [Message]
+    let tasks: [TaskContext]
 }
 
 struct LifePilotChatResponse: Decodable {
@@ -20,7 +28,8 @@ struct LifePilotChatService {
 
     func send(
         message: String,
-        history: [LifePilotChatRequest.Message]
+        history: [LifePilotChatRequest.Message],
+        tasks: [PlannerTask]
     ) async throws -> LifePilotChatResponse {
         var request = URLRequest(
             url: baseURL.appendingPathComponent("v1/chat")
@@ -31,7 +40,15 @@ struct LifePilotChatService {
         request.httpBody = try JSONEncoder().encode(
             LifePilotChatRequest(
                 message: message,
-                history: Array(history.suffix(10))
+                history: Array(history.suffix(10)),
+                tasks: tasks.prefix(100).map { task in
+                    LifePilotChatRequest.TaskContext(
+                        title: task.title,
+                        dueDate: ISO8601DateFormatter().string(from: task.dueDate),
+                        priority: task.priority.rawValue,
+                        isCompleted: task.isCompleted
+                    )
+                }
             )
         )
 

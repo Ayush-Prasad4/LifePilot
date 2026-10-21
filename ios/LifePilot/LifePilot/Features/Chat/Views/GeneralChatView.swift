@@ -288,7 +288,8 @@ struct GeneralChatView: View {
             do {
                 let response = try await service.send(
                     message: text,
-                    history: history
+                    history: history,
+                    tasks: CalendarTaskStore().load()
                 )
                 if let currentIndex = selectedIndex,
                    conversations[currentIndex].id == conversations[index].id {

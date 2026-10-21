@@ -181,3 +181,44 @@ def test_chat_rejects_invalid_history_role():
 def test_chat_rejects_empty_message():
     response = client.post("/v1/chat", json={"message": ""})
     assert response.status_code == 422
+
+
+def test_chat_includes_calendar_task_context(monkeypatch):
+    captured = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+
+            class Result:
+                output_text = "Your urgent task is Submit assignment."
+
+            return Result()
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = FakeResponses()
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+
+    response = client.post(
+        "/v1/chat",
+        json={
+            "message": "What is my urgent task?",
+            "tasks": [
+                {
+                    "title": "Submit assignment",
+                    "dueDate": "2026-10-22T09:00:00Z",
+                    "priority": "Urgent",
+                    "isCompleted": False,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Submit assignment" in captured["input"]
+    assert "Urgent" in captured["input"]
+    assert "2026-10-22T09:00:00Z" in captured["input"]
+    assert "completed: False" in captured["input"]
