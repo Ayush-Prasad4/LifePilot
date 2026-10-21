@@ -365,15 +365,23 @@ struct GeneralChatView: View {
         let valid = pendingActionProposals.allSatisfy { proposal in
             switch proposal.action {
             case "create":
-                return proposal.title?.trimmingCharacters(
+                let titleIsValid = proposal.title?.trimmingCharacters(
                     in: .whitespacesAndNewlines
                 ).isEmpty == false
+                let dateIsValid = proposal.dueDate == nil
+                    || parseProposalDate(proposal.dueDate) != nil
+                return titleIsValid && dateIsValid
             case "edit":
                 guard let id = proposal.task_id,
                       existingIDs.contains(id) else { return false }
-                return (proposal.title?.isEmpty == false)
+                let hasChanges = (proposal.title?.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty == false)
                     || (proposal.dueDate?.isEmpty == false)
                     || (proposal.priority?.isEmpty == false)
+                let dateIsValid = proposal.dueDate == nil
+                    || parseProposalDate(proposal.dueDate) != nil
+                return hasChanges && dateIsValid
             case "complete", "delete":
                 guard let id = proposal.task_id else { return false }
                 return existingIDs.contains(id)
@@ -392,11 +400,17 @@ struct GeneralChatView: View {
         for proposal in pendingActionProposals {
             switch proposal.action {
             case "create":
-                guard let title = proposal.title, !title.isEmpty else { continue }
+                guard let rawTitle = proposal.title else { continue }
+                let title = rawTitle.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+                guard !title.isEmpty else { continue }
+                let dueDate = parseProposalDate(proposal.dueDate)
+                    ?? Calendar.current.startOfDay(for: Date())
                 tasks.append(
                     PlannerTask(
                         title: title,
-                        dueDate: parseProposalDate(proposal.dueDate) ?? Date(),
+                        dueDate: dueDate,
                         priority: PlannerPriority(rawValue: proposal.priority ?? "") ?? .normal
                     )
                 )
@@ -407,8 +421,13 @@ struct GeneralChatView: View {
                       let index = tasks.firstIndex(where: { $0.id == id }) else {
                     continue
                 }
-                if let title = proposal.title, !title.isEmpty {
-                    tasks[index].title = title
+                if let title = proposal.title {
+                    let cleanedTitle = title.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+                    if !cleanedTitle.isEmpty {
+                        tasks[index].title = cleanedTitle
+                    }
                 }
                 if let dateString = proposal.dueDate,
                    let date = parseProposalDate(dateString) {
