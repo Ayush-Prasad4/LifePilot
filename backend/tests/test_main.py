@@ -352,3 +352,74 @@ def test_task_actions_reject_conflicting_actions_for_same_task(monkeypatch):
     )
     assert response.status_code == 502
     assert "conflicting actions" in response.json()["detail"]
+
+
+def test_task_actions_include_current_date_for_relative_date_resolution(monkeypatch):
+    import json
+    from datetime import date
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    captured = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{
+                    "action": "create",
+                    "title": "Submit assignment",
+                    "dueDate": date.today().isoformat(),
+                    "priority": "Normal",
+                }]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a task for today", "tasks": []},
+    )
+
+    assert response.status_code == 200
+    model_input = json.loads(captured["input"])
+    assert model_input["current_date"] == date.today().isoformat()
+    assert "tomorrow" in captured["instructions"].lower()
+    assert response.json()["proposals"][0]["dueDate"] == date.today().isoformat()
+
+
+def test_task_actions_allow_task_without_deadline(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{
+                    "action": "create",
+                    "title": "Read chapter",
+                    "dueDate": None,
+                    "priority": "Normal",
+                }]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a task to read a chapter", "tasks": []},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["proposals"][0]["dueDate"] is None
