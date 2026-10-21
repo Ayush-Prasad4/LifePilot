@@ -3,27 +3,70 @@ import SwiftUI
 @MainActor
 final class DashboardViewModel: ObservableObject {
     @Published var searchText = ""
-    @Published private(set) var tasks: [LifeTask]
-    @Published private(set) var documents: [LifeDocument]
+    @Published private(set) var tasks: [LifeTask] = []
+    @Published private(set) var documents: [LifeDocument] = []
+    @Published private(set) var totalTaskCount = 0
+    @Published private(set) var completedTaskCount = 0
     @Published var selectedActionMessage: String?
 
     private let repository: any DashboardRepository
     private let useStoredDocuments: Bool
+    private let useStoredTasks: Bool
 
     init(
-        repository: any DashboardRepository = DashboardService(),
+        repository: (any DashboardRepository)? = nil,
         useStoredDocuments: Bool = true
     ) {
-        self.repository = repository
-        self.tasks = repository.fetchTasks()
-        self.documents = Self.loadDocuments(
-            repository: repository,
+        let resolvedRepository = repository ?? DashboardService()
+        self.repository = resolvedRepository
+        self.useStoredDocuments = useStoredDocuments
+        self.useStoredTasks = (repository == nil && useStoredDocuments)
+        refreshTasks()
+        documents = Self.loadDocuments(
+            repository: resolvedRepository,
             useStoredDocuments: useStoredDocuments
         )
-        self.useStoredDocuments = useStoredDocuments
+    }
+
+    func refreshTasks() {
+        guard useStoredTasks else {
+            tasks = repository.fetchTasks()
+            totalTaskCount = tasks.count
+            completedTaskCount = 0
+            return
+        }
+
+        let storedTasks = CalendarTaskStore().load()
+        totalTaskCount = storedTasks.count
+        completedTaskCount = storedTasks.filter(\.isCompleted).count
+
+        tasks = storedTasks
+            .filter { !$0.isCompleted }
+            .sorted { $0.dueDate < $1.dueDate }
+            .prefix(3)
+            .map { task in
+                let dueLabel: String
+                if Calendar.current.isDateInToday(task.dueDate) {
+                    dueLabel = "Today · " + task.dueDate.formatted(date: .omitted, time: .shortened)
+                } else if Calendar.current.isDateInTomorrow(task.dueDate) {
+                    dueLabel = "Tomorrow · " + task.dueDate.formatted(date: .omitted, time: .shortened)
+                } else {
+                    dueLabel = task.dueDate.formatted(date: .abbreviated, time: .shortened)
+                }
+
+                return LifeTask(
+                    id: task.id,
+                    title: task.title,
+                    subtitle: task.priority.rawValue + " priority",
+                    dueLabel: dueLabel,
+                    symbol: "calendar",
+                    priority: task.priority == .normal ? .normal : .important
+                )
+            }
     }
 
     func refreshDocuments() {
+        refreshTasks()
         documents = Self.loadDocuments(
             repository: repository,
             useStoredDocuments: useStoredDocuments
@@ -39,7 +82,6 @@ final class DashboardViewModel: ObservableObject {
         }
 
         let storedDocuments = PDFDocumentStore.load()
-
         guard !storedDocuments.isEmpty else {
             return repository.fetchDocuments()
         }
@@ -62,13 +104,12 @@ final class DashboardViewModel: ObservableObject {
                 id: document.id,
                 title: document.title,
                 category: document.category,
-                updatedLabel: document.updatedLabel,
+                updatedLabel: document.importedAt.formatted(date: .abbreviated, time: .omitted),
                 symbol: "doc.text",
                 tint: tint
             )
         }
     }
-
 
     var filteredDocuments: [LifeDocument] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)

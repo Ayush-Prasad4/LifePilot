@@ -26,6 +26,7 @@ struct DashboardView: View {
                     header
                     searchBar
                     overviewSection
+                    progressSection
                     tasksSection
                     documentsSection
                     quickActionsSection
@@ -114,12 +115,47 @@ struct DashboardView: View {
                 )
 
                 overviewCard(
-                    value: "\(viewModel.tasks.count)",
-                    label: "To review",
+                    value: "\(max(0, viewModel.totalTaskCount - viewModel.completedTaskCount))",
+                    label: "Tasks left",
                     symbol: "checklist",
                     tint: .orange
                 )
             }
+        }
+    }
+
+    private var progressSection: some View {
+        let total = viewModel.totalTaskCount
+        let completed = viewModel.completedTaskCount
+        let fraction = total == 0 ? 0.0 : Double(completed) / Double(total)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            sectionHeading("Daily progress", subtitle: "Small steps add up")
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(total == 0 ? "No tasks yet" : "\(completed) of \(total) completed")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(ink)
+                    Spacer()
+                    if total > 0 {
+                        Text("\(Int(fraction * 100))%")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                }
+
+                ProgressView(value: fraction)
+                    .tint(.green)
+
+                Text(total == 0
+                     ? "Add a task in Calendar to track your progress."
+                     : "Progress updates from your Calendar tasks.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white, in: RoundedRectangle(cornerRadius: 20))
         }
     }
 
