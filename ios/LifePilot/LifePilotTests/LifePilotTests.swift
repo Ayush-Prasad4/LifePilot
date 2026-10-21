@@ -400,6 +400,61 @@ struct LifePilotTests {
         #expect(reloaded.first(where: { $0.title == "Invoice 2026" })?.category == "Finance")
     }
 
+
+    @Test func corruptedMetadataLoadsAsEmptyWithoutChangingTheFile() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let metadataURL = root.appendingPathComponent("lifepilot-documents.json")
+        let corruptData = Data("{ invalid json".utf8)
+        try corruptData.write(to: metadataURL)
+
+        let loaded = PDFDocumentStore.load(from: root)
+
+        #expect(loaded.isEmpty)
+        #expect((try? Data(contentsOf: metadataURL)) == corruptData)
+    }
+
+    @Test func loadingStoreIgnoresDocumentsWhosePDFFileIsMissing() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let store = root.appendingPathComponent("store", isDirectory: true)
+
+        for directory in [source, store] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sourcePDF = source.appendingPathComponent("Lecture Notes.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+        }.write(to: sourcePDF)
+
+        let imported = try PDFDocumentStore.importPDFs(
+            from: [sourcePDF], existing: [], in: store
+        )
+        let document = try #require(imported.first)
+        let storedPDF = store.appendingPathComponent(document.filename)
+        try FileManager.default.removeItem(at: storedPDF)
+
+        let loaded = PDFDocumentStore.load(from: store)
+
+        #expect(loaded.isEmpty)
+        #expect(FileManager.default.fileExists(
+            atPath: store.appendingPathComponent("lifepilot-documents.json").path
+        ))
+    }
+
     @Test func dashboardLoadsInitialData() {
         let viewModel = DashboardViewModel(useStoredDocuments: false)
 
