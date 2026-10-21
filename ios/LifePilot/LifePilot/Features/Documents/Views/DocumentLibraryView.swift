@@ -129,13 +129,34 @@ enum PDFDocumentStore {
         _ document: StoredPDFDocument,
         existing: [StoredPDFDocument]
     ) throws -> [StoredPDFDocument] {
-        let url = fileURL(for: document)
-        if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.removeItem(at: url)
+        let updated = existing.filter { $0.id != document.id }
+        let originalURL = fileURL(for: document)
+        let stagedURL = directory.appendingPathComponent(
+            ".lifepilot-delete-\(UUID().uuidString)-\(document.filename)"
+        )
+        let fileExists = FileManager.default.fileExists(atPath: originalURL.path)
+
+        if fileExists {
+            try FileManager.default.moveItem(at: originalURL, to: stagedURL)
         }
 
-        let updated = existing.filter { $0.id != document.id }
-        try save(updated)
+        do {
+            try save(updated)
+        } catch {
+            if fileExists {
+                do {
+                    try FileManager.default.moveItem(at: stagedURL, to: originalURL)
+                } catch {
+                    print("Warning: could not restore PDF after metadata save failure: \(error)")
+                }
+            }
+            throw error
+        }
+
+        if fileExists {
+            try? FileManager.default.removeItem(at: stagedURL)
+        }
+
         return updated.sorted { $0.importedAt > $1.importedAt }
     }
 
