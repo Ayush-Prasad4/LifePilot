@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UserNotifications
 
 struct ContentView: View {
@@ -423,13 +424,102 @@ private struct PlannerTaskEditor: View {
 }
 
 private struct SettingsView: View {
+    @State private var notificationStatus = "Checking…"
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
+        return "\(version) (\(build))"
+    }
+
     var body: some View {
-        ContentPlaceholderView(
-            title: "Settings",
-            subtitle: "Manage your LifePilot experience.",
-            symbol: "gearshape",
-            features: ["Preferences", "Notifications", "Privacy"]
-        )
+        List {
+            Section {
+                HStack(spacing: 14) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.tint)
+                        .frame(width: 52, height: 52)
+                        .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 15))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("LifePilot")
+                            .font(.title3.bold())
+                        Text("Your personal productivity space")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+
+            Section("Notifications") {
+                HStack {
+                    Label("Task reminders", systemImage: "bell.badge")
+                    Spacer()
+                    Text(notificationStatus)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                Button {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                } label: {
+                    Label("Open iOS Settings", systemImage: "arrow.up.right.square")
+                }
+
+                Text("Task reminders are delivered at the task's due time when notifications are permitted. You can change permission in iOS Settings.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Privacy") {
+                Label("Documents stay in app storage", systemImage: "lock.shield")
+                    .font(.body)
+
+                Text("Imported PDF files are stored in LifePilot's local app storage. When you explicitly use AI document features, relevant text and your question may be sent to the configured AI service to generate an answer.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Text("You can manage notification permissions in iOS Settings. Removing the app may remove its locally stored files and data.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("About") {
+                LabeledContent("Version", value: appVersion)
+                LabeledContent("Platform", value: "iOS")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear(perform: refreshNotificationStatus)
+    }
+
+    private func refreshNotificationStatus() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let status: String
+            switch settings.authorizationStatus {
+            case .authorized:
+                status = "Allowed"
+            case .denied:
+                status = "Denied"
+            case .notDetermined:
+                status = "Not requested"
+            case .provisional:
+                status = "Provisional"
+            case .ephemeral:
+                status = "Temporary"
+            @unknown default:
+                status = "Unknown"
+            }
+
+            DispatchQueue.main.async {
+                notificationStatus = status
+            }
+        }
     }
 }
 
