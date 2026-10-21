@@ -235,6 +235,8 @@ def test_task_actions_endpoint_returns_proposal(monkeypatch):
             self.responses = self
 
         def create(self, **kwargs):
+            assert "json" in json.dumps(kwargs.get("input", "")).lower()
+            assert kwargs["text"]["format"]["type"] == "json_object"
             return SimpleNamespace(output_text=json.dumps({
                 "proposals": [
                     {"action": "create", "title": "Study", "priority": "Normal"}

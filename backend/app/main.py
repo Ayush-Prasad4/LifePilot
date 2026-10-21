@@ -266,6 +266,7 @@ def propose_task_actions(request: TaskActionRequest) -> TaskActionResponse:
                 "These are proposals only; never claim changes were applied."
             ),
             input=json.dumps({
+                "output_format": "JSON",
                 "message": request.message,
                 "tasks": [task.model_dump() for task in request.tasks],
             }),
