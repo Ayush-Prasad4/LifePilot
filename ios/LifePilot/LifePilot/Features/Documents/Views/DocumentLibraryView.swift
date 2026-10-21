@@ -37,7 +37,11 @@ enum PDFDocumentStore {
         directory.appendingPathComponent(metadataFilename)
     }
 
-    static func load() -> [StoredPDFDocument] {
+    // Injectable directory keeps tests isolated from the user's real library.
+    static func load(from directory: URL? = nil) -> [StoredPDFDocument] {
+        let root = directory ?? self.directory
+        let metadataURL = root.appendingPathComponent(metadataFilename)
+
         guard
             let data = try? Data(contentsOf: metadataURL),
             let documents = try? JSONDecoder().decode([StoredPDFDocument].self, from: data)
@@ -47,19 +51,26 @@ enum PDFDocumentStore {
 
         return documents.filter {
             FileManager.default.fileExists(
-                atPath: directory.appendingPathComponent($0.filename).path
+                atPath: root.appendingPathComponent($0.filename).path
             )
         }.sorted { $0.importedAt > $1.importedAt }
     }
 
-    static func fileURL(for document: StoredPDFDocument) -> URL {
-        directory.appendingPathComponent(document.filename)
+    static func fileURL(for document: StoredPDFDocument, in directory: URL? = nil) -> URL {
+        (directory ?? self.directory).appendingPathComponent(document.filename)
     }
 
     static func importPDFs(
         from urls: [URL],
-        existing: [StoredPDFDocument]
+        existing: [StoredPDFDocument],
+        in directory: URL? = nil
     ) throws -> [StoredPDFDocument] {
+        let root = directory ?? self.directory
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
+        let metadataURL = root.appendingPathComponent(metadataFilename)
         var documents = existing
         var copiedFiles: [URL] = []
 
@@ -80,10 +91,8 @@ enum PDFDocumentStore {
                     throw PDFDocumentStoreError.invalidPDF
                 }
 
-                let id = UUID()
-                let filename = "\(id.uuidString).pdf"
-                let destination = directory.appendingPathComponent(filename)
-
+                let filename = "\(UUID().uuidString).pdf"
+                let destination = root.appendingPathComponent(filename)
                 try FileManager.default.copyItem(at: sourceURL, to: destination)
                 copiedFiles.append(destination)
 
@@ -97,7 +106,7 @@ enum PDFDocumentStore {
                 )
             }
 
-            try save(documents)
+            try save(documents, to: metadataURL)
             return documents.sorted { $0.importedAt > $1.importedAt }
         } catch {
             for url in copiedFiles {
@@ -111,8 +120,14 @@ enum PDFDocumentStore {
         documentID: UUID,
         title: String? = nil,
         category: String? = nil,
-        existing: [StoredPDFDocument]
+        existing: [StoredPDFDocument],
+        in directory: URL? = nil
     ) throws -> [StoredPDFDocument] {
+        let root = directory ?? self.directory
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
         var updated = existing
         guard let index = updated.firstIndex(where: { $0.id == documentID }) else {
             return existing
@@ -121,17 +136,23 @@ enum PDFDocumentStore {
         if let title { updated[index].title = title }
         if let category { updated[index].category = category }
 
-        try save(updated)
+        try save(updated, to: root.appendingPathComponent(metadataFilename))
         return updated.sorted { $0.importedAt > $1.importedAt }
     }
 
     static func delete(
         _ document: StoredPDFDocument,
-        existing: [StoredPDFDocument]
+        existing: [StoredPDFDocument],
+        in directory: URL? = nil
     ) throws -> [StoredPDFDocument] {
+        let root = directory ?? self.directory
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
         let updated = existing.filter { $0.id != document.id }
-        let originalURL = fileURL(for: document)
-        let stagedURL = directory.appendingPathComponent(
+        let originalURL = root.appendingPathComponent(document.filename)
+        let stagedURL = root.appendingPathComponent(
             ".lifepilot-delete-\(UUID().uuidString)-\(document.filename)"
         )
         let fileExists = FileManager.default.fileExists(atPath: originalURL.path)
@@ -141,14 +162,10 @@ enum PDFDocumentStore {
         }
 
         do {
-            try save(updated)
+            try save(updated, to: root.appendingPathComponent(metadataFilename))
         } catch {
             if fileExists {
-                do {
-                    try FileManager.default.moveItem(at: stagedURL, to: originalURL)
-                } catch {
-                    print("Warning: could not restore PDF after metadata save failure: \(error)")
-                }
+                try? FileManager.default.moveItem(at: stagedURL, to: originalURL)
             }
             throw error
         }
@@ -175,7 +192,7 @@ enum PDFDocumentStore {
         return "Other"
     }
 
-    private static func save(_ documents: [StoredPDFDocument]) throws {
+    private static func save(_ documents: [StoredPDFDocument], to metadataURL: URL) throws {
         let data = try JSONEncoder().encode(documents)
         try data.write(to: metadataURL, options: .atomic)
     }

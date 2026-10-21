@@ -23,48 +23,69 @@ struct LifePilotTests {
     }
 
     @Test func updatingDocumentPersistsTitleAndCategory() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
         let document = StoredPDFDocument(
             title: "Original title",
             category: "Other",
-            filename: "test-document-do-not-create.pdf"
+            filename: "test-document.pdf"
         )
 
         let updated = try PDFDocumentStore.update(
             documentID: document.id,
             title: "Renamed study notes",
             category: "Study",
-            existing: [document]
+            existing: [document],
+            in: directory
         )
 
-        #expect(updated.count == 1)
         #expect(updated.first?.title == "Renamed study notes")
         #expect(updated.first?.category == "Study")
 
-        // Restore metadata to its previous state; this test creates no PDF files.
-        _ = try PDFDocumentStore.update(
-            documentID: document.id,
-            title: document.title,
-            category: document.category,
-            existing: updated
-        )
+        let reloaded = PDFDocumentStore.load(from: directory)
+        #expect(reloaded.isEmpty == true)
     }
 
     @Test func deletingMissingFileRemovesDocumentFromMetadata() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
         let document = StoredPDFDocument(
             title: "Temporary regression test",
             category: "Other",
             filename: "missing-regression-test-file.pdf"
         )
 
-        let remaining = try PDFDocumentStore.delete(document, existing: [document])
+        let remaining = try PDFDocumentStore.delete(
+            document,
+            existing: [document],
+            in: directory
+        )
 
         #expect(remaining.isEmpty)
-        #expect(!FileManager.default.fileExists(
-            atPath: PDFDocumentStore.fileURL(for: document).path
-        ))
+        #expect(PDFDocumentStore.load(from: directory).isEmpty)
     }
 
     @Test func deletingOneDocumentPreservesOtherDocumentsInResult() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
         let first = StoredPDFDocument(
             title: "First test document",
             category: "Other",
@@ -76,10 +97,15 @@ struct LifePilotTests {
             filename: "missing-second-regression-test.pdf"
         )
 
-        let remaining = try PDFDocumentStore.delete(first, existing: [first, second])
+        let remaining = try PDFDocumentStore.delete(
+            first,
+            existing: [first, second],
+            in: directory
+        )
 
         #expect(remaining.count == 1)
         #expect(remaining.first?.id == second.id)
+        #expect(PDFDocumentStore.load(from: directory).isEmpty)
     }
 
     @Test func dashboardLoadsInitialData() {
