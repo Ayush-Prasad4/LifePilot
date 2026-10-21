@@ -1,4 +1,5 @@
 import SwiftUI
+import PDFKit
 
 struct PDFDocumentAssistantView: View {
     @State private var documents = PDFDocumentStore.load()
@@ -12,6 +13,7 @@ struct PDFDocumentAssistantView: View {
     @State private var isSearching = false
     @State private var searchTask: Task<PDFDocumentSearchOutcome?, Never>?
     @State private var activeSearchID: UUID?
+    @State private var selectedPDFResult: PDFSearchResult?
 
     var body: some View {
         ScrollView {
@@ -78,21 +80,31 @@ struct PDFDocumentAssistantView: View {
                 }
 
                 ForEach(results) { result in
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(result.documentTitle)
-                            .font(.headline)
+                    Button {
+                        selectedPDFResult = result
+                    } label: {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(result.documentTitle)
+                                .font(.headline)
+                                .foregroundStyle(.primary)
 
-                        Label("Page \(result.pageNumber)", systemImage: "doc.text")
-                            .font(.caption)
-                            .foregroundStyle(.tint)
+                            Label("Page \(result.pageNumber) · Tap to open", systemImage: "doc.text")
+                                .font(.caption)
+                                .foregroundStyle(.tint)
 
-                        Text(result.excerpt)
-                            .font(.body)
-                            .textSelection(.enabled)
+                            Text(result.excerpt)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.leading)
+                                .textSelection(.enabled)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
                     }
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens this PDF at page \(result.pageNumber)")
                 }
                 if !results.isEmpty {
                     Button(action: askAI) {
@@ -133,6 +145,11 @@ struct PDFDocumentAssistantView: View {
         }
         .navigationTitle("AI Assistant")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $selectedPDFResult) { result in
+            NavigationStack {
+                PDFSearchResultDetailView(result: result)
+            }
+        }
         .onAppear {
             documents = PDFDocumentStore.load()
         }
@@ -214,5 +231,75 @@ struct PDFDocumentAssistantView: View {
             results = outcome.results
             statusMessage = outcome.statusMessage
         }
+    }
+}
+
+
+private struct PDFSearchResultDetailView: View {
+    let result: PDFSearchResult
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Group {
+            let document = PDFDocumentStore.load().first {
+                $0.id == result.documentID
+            }
+
+            if let document,
+               let pdf = PDFDocument(url: PDFDocumentStore.fileURL(for: document)),
+               result.pageNumber > 0,
+               result.pageNumber <= pdf.pageCount {
+                PDFSearchResultPDFPreview(
+                    document: pdf,
+                    pageNumber: result.pageNumber
+                )
+                .background(.secondary.opacity(0.06))
+            } else {
+                ContentUnavailableView(
+                    "Unable to open this page",
+                    systemImage: "doc.questionmark",
+                    description: Text("The PDF may have been deleted, moved, or changed since the search.")
+                )
+            }
+        }
+        .navigationTitle(result.documentTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") {
+                    dismiss()
+                }
+            }
+        }
+    }
+}
+
+private struct PDFSearchResultPDFPreview: UIViewRepresentable {
+    let document: PDFDocument
+    let pageNumber: Int
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.backgroundColor = .secondarySystemBackground
+        view.document = document
+        navigate(view)
+        return view
+    }
+
+    func updateUIView(_ view: PDFView, context: Context) {
+        if view.document !== document {
+            view.document = document
+        }
+        view.autoScales = true
+        navigate(view)
+    }
+
+    private func navigate(_ view: PDFView) {
+        guard let page = document.page(at: pageNumber - 1) else { return }
+        view.go(to: page)
     }
 }
