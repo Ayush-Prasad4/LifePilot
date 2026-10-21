@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import LifePilot
 
 @MainActor
@@ -37,6 +38,10 @@ struct LifePilotTests {
             filename: "test-document.pdf"
         )
 
+        try Data().write(
+            to: directory.appendingPathComponent(document.filename)
+        )
+
         let updated = try PDFDocumentStore.update(
             documentID: document.id,
             title: "Renamed study notes",
@@ -49,7 +54,10 @@ struct LifePilotTests {
         #expect(updated.first?.category == "Study")
 
         let reloaded = PDFDocumentStore.load(from: directory)
-        #expect(reloaded.isEmpty == true)
+        #expect(reloaded.count == 1)
+        #expect(reloaded.first?.id == document.id)
+        #expect(reloaded.first?.title == "Renamed study notes")
+        #expect(reloaded.first?.category == "Study")
     }
 
     @Test func deletingMissingFileRemovesDocumentFromMetadata() throws {
@@ -97,6 +105,10 @@ struct LifePilotTests {
             filename: "missing-second-regression-test.pdf"
         )
 
+        try Data().write(
+            to: directory.appendingPathComponent(second.filename)
+        )
+
         let remaining = try PDFDocumentStore.delete(
             first,
             existing: [first, second],
@@ -105,7 +117,93 @@ struct LifePilotTests {
 
         #expect(remaining.count == 1)
         #expect(remaining.first?.id == second.id)
-        #expect(PDFDocumentStore.load(from: directory).isEmpty)
+
+        let reloaded = PDFDocumentStore.load(from: directory)
+        #expect(reloaded.count == 1)
+        #expect(reloaded.first?.id == second.id)
+        #expect(reloaded.first?.title == second.title)
+    }
+
+
+    @Test func importingValidPDFPersistsFileAndMetadata() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+        let destinationDirectory = root.appendingPathComponent("store", isDirectory: true)
+
+        try FileManager.default.createDirectory(
+            at: sourceDirectory, withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: destinationDirectory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let source = sourceDirectory.appendingPathComponent("Study Notes.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+        }.write(to: source)
+
+        let imported = try PDFDocumentStore.importPDFs(
+            from: [source], existing: [], in: destinationDirectory
+        )
+
+        #expect(imported.count == 1)
+        #expect(imported.first?.title == "Study Notes")
+
+        let stored = try #require(imported.first)
+        let storedURL = destinationDirectory.appendingPathComponent(stored.filename)
+        #expect(FileManager.default.fileExists(atPath: storedURL.path))
+
+        let reloaded = PDFDocumentStore.load(from: destinationDirectory)
+        #expect(reloaded.count == 1)
+        #expect(reloaded.first?.id == stored.id)
+        #expect(reloaded.first?.title == "Study Notes")
+    }
+
+    @Test func failedMultiPDFImportCleansUpPreviouslyCopiedFiles() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+        let destinationDirectory = root.appendingPathComponent("store", isDirectory: true)
+
+        try FileManager.default.createDirectory(
+            at: sourceDirectory, withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: destinationDirectory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let validPDF = sourceDirectory.appendingPathComponent("Valid.pdf")
+        let invalidPDF = sourceDirectory.appendingPathComponent("Invalid.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+        }.write(to: validPDF)
+        try Data("not a PDF".utf8).write(to: invalidPDF)
+
+        var didThrow = false
+        do {
+            _ = try PDFDocumentStore.importPDFs(
+                from: [validPDF, invalidPDF],
+                existing: [],
+                in: destinationDirectory
+            )
+        } catch {
+            didThrow = true
+        }
+
+        #expect(didThrow)
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: destinationDirectory.path
+        ).isEmpty)
+        #expect(PDFDocumentStore.load(from: destinationDirectory).isEmpty)
     }
 
     @Test func dashboardLoadsInitialData() {
