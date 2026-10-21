@@ -1,6 +1,12 @@
 import SwiftUI
 
 struct ContentView: View {
+    init() {
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-reset-tasks") {
+            UserDefaults.standard.removeObject(forKey: "lifepilot.planner.tasks")
+        }
+    }
+
     @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("-ui-testing-calendar") ? 4 : 0
 
     var body: some View {
@@ -115,6 +121,7 @@ private struct CalendarView: View {
     @State private var editingTask: PlannerTask?
     @State private var taskPendingDeletion: PlannerTask?
     @State private var showingDeleteConfirmation = false
+    @State private var taskForActions: PlannerTask? = nil
     @State private var filter: PlannerFilter = .today
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
 
@@ -188,6 +195,7 @@ private struct CalendarView: View {
                             Text(task.title)
                                 .font(.body.weight(.medium))
                                 .strikethrough(task.isCompleted)
+                                .accessibilityIdentifier(task.title)
 
                             Text(task.dueDate.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption)
@@ -212,37 +220,45 @@ private struct CalendarView: View {
                     }
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
-                    Menu {
-                        Button {
-                            editingTask = task
-                            showingEditor = true
-                        } label: {
-                            Label("Edit", systemImage: "pencil")
-                        }
-
-                        Button {
-                            update(task) { $0.isCompleted.toggle() }
-                        } label: {
-                            Label(
-                                task.isCompleted ? "Mark Incomplete" : "Complete",
-                                systemImage: task.isCompleted
-                                    ? "arrow.uturn.backward.circle" : "checkmark.circle"
-                            )
-                        }
-
-                        Button(role: .destructive) {
-                            taskPendingDeletion = task
-                            showingDeleteConfirmation = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
+                    Button {
+                        taskForActions = task
                     } label: {
                         Image(systemName: "ellipsis.circle")
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityLabel("Task actions")
+                    .accessibilityIdentifier("Task actions")
+                    .buttonStyle(.borderless)
                 }
+            }
+        }
+        .confirmationDialog(
+            "Task actions",
+            isPresented: Binding(
+                get: { taskForActions != nil },
+                set: { if !$0 { taskForActions = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Edit") {
+                editingTask = taskForActions
+                showingEditor = true
+                taskForActions = nil
+            }
+            Button(taskForActions?.isCompleted == true ? "Mark Incomplete" : "Complete") {
+                if let task = taskForActions {
+                    update(task) { $0.isCompleted.toggle() }
+                }
+                taskForActions = nil
+            }
+            Button("Delete", role: .destructive) {
+                taskPendingDeletion = taskForActions
+                taskForActions = nil
+                showingDeleteConfirmation = taskPendingDeletion != nil
+            }
+            Button("Cancel", role: .cancel) {
+                taskForActions = nil
             }
         }
         .alert("Delete this task?", isPresented: $showingDeleteConfirmation) {

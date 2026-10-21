@@ -73,6 +73,57 @@ final class LifePilotUITests: XCTestCase {
     }
 
     @MainActor
+    func testTaskDeletionRequiresConfirmation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-calendar"]
+        app.launch()
+
+        let allFilter = app.buttons["All"]
+        XCTAssertTrue(allFilter.waitForExistence(timeout: 5))
+        allFilter.tap()
+
+        app.buttons["Add task"].tap()
+        let titleField = app.textFields["What do you need to do?"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.tap()
+        titleField.typeText("UI Delete Test Task")
+        app.buttons["Save"].tap()
+
+        let taskTitle = app.staticTexts["UI Delete Test Task"]
+        let taskList = app.collectionViews.firstMatch
+
+        // New tasks are appended to the list and may initially be off-screen.
+        for _ in 0..<8 {
+            if taskTitle.waitForExistence(timeout: 1) {
+                break
+            }
+            taskList.swipeUp()
+        }
+
+        XCTAssertTrue(taskTitle.exists, "Created task not found in Calendar UI")
+
+        let taskActions = app.buttons["Task actions"]
+        XCTAssertTrue(taskActions.waitForExistence(timeout: 5))
+        taskActions.tap()
+        app.buttons["Delete"].tap()
+
+        let confirmation = app.alerts["Delete this task?"]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        confirmation.buttons["Cancel"].tap()
+        XCTAssertTrue(taskTitle.waitForExistence(timeout: 5))
+
+        let secondTaskActions = app.buttons["Task actions"]
+        XCTAssertTrue(secondTaskActions.waitForExistence(timeout: 5))
+        secondTaskActions.tap()
+        app.buttons["Delete"].tap()
+
+        let secondConfirmation = app.alerts["Delete this task?"]
+        XCTAssertTrue(secondConfirmation.waitForExistence(timeout: 5))
+        secondConfirmation.buttons["Delete"].tap()
+        XCTAssertFalse(taskTitle.waitForExistence(timeout: 3))
+    }
+
+    @MainActor
     func testExample() throws {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
