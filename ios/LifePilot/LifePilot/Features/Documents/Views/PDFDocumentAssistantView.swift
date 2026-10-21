@@ -8,6 +8,7 @@ struct PDFDocumentAssistantView: View {
     @State private var hasSearched = false
     @State private var statusMessage: String?
     @State private var aiAnswer: String?
+    @State private var conversation: [AIAnswerRequest.ConversationMessage] = []
     @State private var aiError: String?
     @State private var isAskingAI = false
     @State private var isSearching = false
@@ -128,6 +129,21 @@ struct PDFDocumentAssistantView: View {
                         .textSelection(.enabled)
                 }
 
+                if !conversation.isEmpty {
+                    HStack {
+                        Text("Follow-up questions use recent chat context.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear conversation", systemImage: "arrow.counterclockwise") {
+                            conversation.removeAll()
+                            aiAnswer = nil
+                            aiError = nil
+                        }
+                        .font(.caption)
+                    }
+                }
+
                 if let aiAnswer {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("AI Answer", systemImage: "sparkles")
@@ -222,7 +238,8 @@ struct PDFDocumentAssistantView: View {
         aiAnswer = nil
         aiError = nil
 
-        let currentQuestion = question
+        let currentQuestion = question.trimmingCharacters(in: .whitespacesAndNewlines)
+        let previousConversation = conversation
         let evidence = results.map { result in
             AIAnswerRequest.Evidence(
                 document_title: result.documentTitle,
@@ -237,8 +254,12 @@ struct PDFDocumentAssistantView: View {
             do {
                 let response = try await LifePilotAIService().answer(
                     question: currentQuestion,
-                    evidence: evidence
+                    evidence: evidence,
+                    history: previousConversation
                 )
+                conversation.append(.init(role: "user", content: currentQuestion))
+                conversation.append(.init(role: "assistant", content: response.answer))
+                conversation = Array(conversation.suffix(10))
                 aiAnswer = response.answer
             } catch {
                 aiError = error.localizedDescription
@@ -256,6 +277,7 @@ struct PDFDocumentAssistantView: View {
         statusMessage = nil
         aiAnswer = nil
         aiError = nil
+        conversation.removeAll()
 
         let searchID = UUID()
         activeSearchID = searchID
