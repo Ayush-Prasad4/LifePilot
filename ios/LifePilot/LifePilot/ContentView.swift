@@ -212,34 +212,48 @@ private struct CalendarView: View {
                     }
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        editingTask = task
-                        showingEditor = true
-                    }
-                    .swipeActions {
+                    Menu {
+                        Button {
+                            editingTask = task
+                            showingEditor = true
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+
+                        Button {
+                            update(task) { $0.isCompleted.toggle() }
+                        } label: {
+                            Label(
+                                task.isCompleted ? "Mark Incomplete" : "Complete",
+                                systemImage: task.isCompleted
+                                    ? "arrow.uturn.backward.circle" : "checkmark.circle"
+                            )
+                        }
+
                         Button(role: .destructive) {
                             taskPendingDeletion = task
                             showingDeleteConfirmation = true
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
                     }
+                    .accessibilityLabel("Task actions")
                 }
             }
         }
-        .confirmationDialog(
-            "Delete this task?",
-            isPresented: $showingDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
+        .alert("Delete this task?", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                taskPendingDeletion = nil
+            }
             Button("Delete", role: .destructive) {
                 if let task = taskPendingDeletion {
                     tasks.removeAll { $0.id == task.id }
                     persist()
                 }
-                taskPendingDeletion = nil
-            }
-            Button("Cancel", role: .cancel) {
                 taskPendingDeletion = nil
             }
         } message: {
