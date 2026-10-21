@@ -206,6 +206,96 @@ struct LifePilotTests {
         #expect(PDFDocumentStore.load(from: destinationDirectory).isEmpty)
     }
 
+
+    @Test func importRollsBackCopiedFilesWhenMetadataSaveFails() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceDirectory = root.appendingPathComponent("source", isDirectory: true)
+        let storeDirectory = root.appendingPathComponent("store", isDirectory: true)
+
+        try FileManager.default.createDirectory(
+            at: sourceDirectory, withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: storeDirectory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let source = sourceDirectory.appendingPathComponent("Rollback Test.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+        }.write(to: source)
+
+        // Force metadata persistence to fail: the metadata path is a directory.
+        let metadataBlocker = storeDirectory
+            .appendingPathComponent("lifepilot-documents.json")
+        try FileManager.default.createDirectory(
+            at: metadataBlocker, withIntermediateDirectories: false
+        )
+
+        var didThrow = false
+        do {
+            _ = try PDFDocumentStore.importPDFs(
+                from: [source], existing: [], in: storeDirectory
+            )
+        } catch {
+            didThrow = true
+        }
+
+        #expect(didThrow)
+
+        let remainingFiles = try FileManager.default.contentsOfDirectory(
+            atPath: storeDirectory.path
+        )
+        #expect(!remainingFiles.contains(where: { $0.hasSuffix(".pdf") }))
+        #expect(FileManager.default.fileExists(atPath: metadataBlocker.path))
+    }
+
+    @Test func deleteRestoresOriginalPDFWhenMetadataSaveFails() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let document = StoredPDFDocument(
+            title: "Rollback Test",
+            category: "Other",
+            filename: "rollback-test.pdf"
+        )
+        let originalURL = directory.appendingPathComponent(document.filename)
+        try Data("temporary test fixture".utf8).write(to: originalURL)
+
+        // Force metadata persistence to fail after deletion stages the file.
+        let metadataBlocker = directory.appendingPathComponent(
+            "lifepilot-documents.json"
+        )
+        try FileManager.default.createDirectory(
+            at: metadataBlocker, withIntermediateDirectories: false
+        )
+
+        var didThrow = false
+        do {
+            _ = try PDFDocumentStore.delete(
+                document, existing: [document], in: directory
+            )
+        } catch {
+            didThrow = true
+        }
+
+        #expect(didThrow)
+        #expect(FileManager.default.fileExists(atPath: originalURL.path))
+
+        let filenames = try FileManager.default.contentsOfDirectory(
+            atPath: directory.path
+        )
+        #expect(!filenames.contains(where: { $0.hasPrefix(".lifepilot-delete-") }))
+    }
+
     @Test func dashboardLoadsInitialData() {
         let viewModel = DashboardViewModel(useStoredDocuments: false)
 
