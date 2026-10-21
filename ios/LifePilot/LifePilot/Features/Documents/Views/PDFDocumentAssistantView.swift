@@ -133,8 +133,28 @@ struct PDFDocumentAssistantView: View {
                         Label("AI Answer", systemImage: "sparkles")
                             .font(.headline)
 
-                        Text(aiAnswer)
+                        Text(linkedAIAnswer(aiAnswer))
                             .textSelection(.enabled)
+                            .environment(\.openURL, OpenURLAction { url in
+                                guard url.scheme == "lifepilot",
+                                      url.host == "pdf" else {
+                                    return .systemAction
+                                }
+
+                                let parts = url.pathComponents.filter { $0 != "/" }
+                                guard parts.count == 2,
+                                      let documentID = UUID(uuidString: parts[0]),
+                                      let pageNumber = Int(parts[1]),
+                                      let result = results.first(where: {
+                                          $0.documentID == documentID &&
+                                          $0.pageNumber == pageNumber
+                                      }) else {
+                                    return .discarded
+                                }
+
+                                selectedPDFResult = result
+                                return .handled
+                            })
                     }
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -159,6 +179,40 @@ struct PDFDocumentAssistantView: View {
             searchTask = nil
             isSearching = false
         }
+    }
+
+    private func linkedAIAnswer(_ answer: String) -> AttributedString {
+        var attributed = AttributedString(answer)
+
+        for result in results {
+            let title = NSRegularExpression.escapedPattern(for: result.documentTitle)
+            let pattern = "\(title)\\s*,\\s*p\\.?\\s*\(result.pageNumber)\\b"
+
+            guard let regex = try? NSRegularExpression(
+                pattern: pattern,
+                options: [.caseInsensitive]
+            ) else {
+                continue
+            }
+
+            let matches = regex.matches(
+                in: answer,
+                range: NSRange(answer.startIndex..., in: answer)
+            )
+
+            for match in matches.reversed() {
+                guard let range = Range(match.range, in: attributed),
+                      let url = URL(
+                          string: "lifepilot://pdf/\(result.documentID.uuidString)/\(result.pageNumber)"
+                      ) else {
+                    continue
+                }
+
+                attributed[range].link = url
+            }
+        }
+
+        return attributed
     }
 
     private func askAI() {
