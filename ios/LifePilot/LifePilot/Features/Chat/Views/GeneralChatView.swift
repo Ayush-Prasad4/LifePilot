@@ -177,6 +177,18 @@ struct GeneralChatView: View {
             if selectedID == nil {
                 selectedID = conversations.first?.id
             }
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-action-preview") {
+                pendingActionProposals = [
+                    LifePilotTaskActionProposal(
+                        action: "create",
+                        task_id: nil,
+                        title: "UI Test Task",
+                        dueDate: nil,
+                        priority: "Normal"
+                    )
+                ]
+                showActionPreview = true
+            }
         }
         .sheet(isPresented: $showActionPreview) {
             TaskActionPreviewSheet(
