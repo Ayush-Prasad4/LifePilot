@@ -5,6 +5,22 @@ import UIKit
 
 @MainActor
 struct LifePilotTests {
+    @Test func plannerTasksPersistAndReload() throws {
+        let suite = "LifePilotTests.\\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = CalendarTaskStore(defaults: defaults, key: "tasks")
+        let task = PlannerTask(
+            title: "Submit assignment",
+            dueDate: Date(timeIntervalSince1970: 1_800_000_000),
+            priority: .important
+        )
+
+        store.save([task])
+        #expect(store.load() == [task])
+    }
+
     @Test func importingInvalidPDFThrowsWithoutImportingIt() throws {
         let temporaryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
