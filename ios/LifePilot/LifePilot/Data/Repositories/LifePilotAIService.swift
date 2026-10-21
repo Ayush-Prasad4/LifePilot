@@ -7,8 +7,14 @@ struct AIAnswerRequest: Encodable {
         let excerpt: String
     }
 
+    struct ConversationMessage: Encodable {
+        let role: String
+        let content: String
+    }
+
     let question: String
     let evidence: [Evidence]
+    let history: [ConversationMessage]
 }
 
 struct AIAnswerResponse: Decodable {
@@ -36,7 +42,8 @@ struct LifePilotAIService {
 
     func answer(
         question: String,
-        evidence: [AIAnswerRequest.Evidence]
+        evidence: [AIAnswerRequest.Evidence],
+        history: [AIAnswerRequest.ConversationMessage] = []
     ) async throws -> AIAnswerResponse {
         let url = baseURL.appendingPathComponent("v1/answer")
 
@@ -45,7 +52,11 @@ struct LifePilotAIService {
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(
-            AIAnswerRequest(question: question, evidence: evidence)
+            AIAnswerRequest(
+                question: question,
+                evidence: evidence,
+                history: Array(history.suffix(10))
+            )
         )
 
         let (data, response) = try await URLSession.shared.data(for: request)

@@ -1,7 +1,7 @@
 
 import os
 import logging
-from typing import List
+from typing import List, Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -28,9 +28,15 @@ class Evidence(BaseModel):
     excerpt: str = Field(min_length=1, max_length=6000)
 
 
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=4000)
+
+
 class AnswerRequest(BaseModel):
     question: str = Field(min_length=3, max_length=2000)
     evidence: List[Evidence] = Field(min_length=1, max_length=10)
+    history: List[ConversationMessage] = Field(default_factory=list, max_length=10)
 
 
 class AnswerResponse(BaseModel):
@@ -65,9 +71,15 @@ When making a factual claim, cite the source as [Document Title, p. N].
 Keep the answer clear and useful.
 """
 
+    history_text = "\\n\\n".join(
+        f"{message.role.capitalize()}: {message.content}"
+        for message in request.history
+    )
+
     prompt = (
-        f"Question:\n{request.question}\n\n"
-        f"Document evidence:\n{evidence_text}"
+        (f"Recent conversation:\\n{history_text}\\n\\n" if history_text else "")
+        + f"Current question:\\n{request.question}\\n\\n"
+        + f"Document evidence:\\n{evidence_text}"
     )
 
     try:
