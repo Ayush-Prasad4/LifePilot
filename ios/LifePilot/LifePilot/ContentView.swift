@@ -113,6 +113,8 @@ private struct CalendarView: View {
     @State private var tasks = CalendarTaskStore().load()
     @State private var showingEditor = false
     @State private var editingTask: PlannerTask?
+    @State private var taskPendingDeletion: PlannerTask?
+    @State private var showingDeleteConfirmation = false
     @State private var filter: PlannerFilter = .today
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
 
@@ -216,14 +218,32 @@ private struct CalendarView: View {
                     }
                     .swipeActions {
                         Button(role: .destructive) {
-                            tasks.removeAll { $0.id == task.id }
-                            persist()
+                            taskPendingDeletion = task
+                            showingDeleteConfirmation = true
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
                     }
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete this task?",
+            isPresented: $showingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let task = taskPendingDeletion {
+                    tasks.removeAll { $0.id == task.id }
+                    persist()
+                }
+                taskPendingDeletion = nil
+            }
+            Button("Cancel", role: .cancel) {
+                taskPendingDeletion = nil
+            }
+        } message: {
+            Text("This action cannot be undone.")
         }
         .navigationTitle("Calendar")
         .toolbar {
