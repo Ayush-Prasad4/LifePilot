@@ -2,6 +2,7 @@
 import os
 import json
 import logging
+from datetime import date, datetime
 from typing import List, Literal
 
 from dotenv import load_dotenv
@@ -225,8 +226,8 @@ def answer_question(request: AnswerRequest):
 class ProposedTaskAction(BaseModel):
     action: Literal["create", "edit", "complete", "delete"]
     task_id: str | None = None
-    title: str | None = None
-    dueDate: str | None = None
+    title: str | None = Field(default=None, max_length=200)
+    dueDate: str | None = Field(default=None, max_length=64)
     priority: Literal["Normal", "Important", "Urgent"] | None = None
 
 
@@ -274,12 +275,46 @@ def propose_task_actions(request: TaskActionRequest) -> TaskActionResponse:
         result = TaskActionResponse(proposals=data.get("proposals", []), model=model)
         valid_ids = {task.id for task in request.tasks if task.id}
 
+        seen_existing_task_ids = set()
+
         for proposal in result.proposals:
-            if proposal.action != "create" and proposal.task_id not in valid_ids:
-                raise HTTPException(
-                    status_code=502,
-                    detail="AI returned an invalid task reference.",
-                )
+            if proposal.action != "create":
+                if not proposal.task_id or proposal.task_id not in valid_ids:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="AI returned an invalid task reference.",
+                    )
+
+                # One proposal per existing task avoids conflicting operations
+                # such as edit + delete or duplicate completion requests.
+                if proposal.task_id in seen_existing_task_ids:
+                    raise HTTPException(
+                        status_code=502,
+                        detail="AI returned conflicting actions for one task.",
+                    )
+                seen_existing_task_ids.add(proposal.task_id)
+
+            if proposal.action in ("create", "edit"):
+                if proposal.title is not None and not proposal.title.strip():
+                    raise HTTPException(
+                        status_code=502,
+                        detail="AI returned an empty task title.",
+                    )
+
+                if proposal.dueDate is not None:
+                    try:
+                        date_value = proposal.dueDate
+                        if "T" in date_value:
+                            datetime.fromisoformat(
+                                date_value.replace("Z", "+00:00")
+                            )
+                        else:
+                            date.fromisoformat(date_value)
+                    except ValueError:
+                        raise HTTPException(
+                            status_code=502,
+                            detail="AI returned an invalid task date.",
+                        ) from None
 
             if proposal.action == "create":
                 if not proposal.title or not proposal.title.strip():

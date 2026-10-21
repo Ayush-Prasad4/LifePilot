@@ -282,3 +282,71 @@ def test_task_actions_reject_unknown_task_id(monkeypatch):
         },
     )
     assert response.status_code == 502
+
+
+def test_task_actions_reject_invalid_date(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{
+                    "action": "create",
+                    "title": "Study",
+                    "dueDate": "tomorrow-ish",
+                }]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a study task", "tasks": []},
+    )
+    assert response.status_code == 502
+    assert "invalid task date" in response.json()["detail"]
+
+
+def test_task_actions_reject_conflicting_actions_for_same_task(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    task_id = "task-123"
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [
+                    {"action": "complete", "task_id": task_id},
+                    {"action": "delete", "task_id": task_id},
+                ]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={
+            "message": "Complete and delete this task",
+            "tasks": [{
+                "id": task_id,
+                "title": "Study",
+                "dueDate": "2026-10-22T09:00:00Z",
+                "priority": "Normal",
+                "isCompleted": False,
+            }],
+        },
+    )
+    assert response.status_code == 502
+    assert "conflicting actions" in response.json()["detail"]
