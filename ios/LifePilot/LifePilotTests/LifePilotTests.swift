@@ -455,6 +455,48 @@ struct LifePilotTests {
         ))
     }
 
+
+    @Test func importingOnlyUnsupportedFilesPreservesExistingLibrary() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let store = root.appendingPathComponent("store", isDirectory: true)
+
+        for directory in [source, store] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let existingPDF = store.appendingPathComponent("existing.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+        }.write(to: existingPDF)
+
+        let existing = StoredPDFDocument(
+            title: "Existing Study Notes",
+            category: "Study",
+            filename: "existing.pdf"
+        )
+        let unsupportedFile = source.appendingPathComponent("notes.txt")
+        try Data("not a PDF".utf8).write(to: unsupportedFile)
+
+        let result = try PDFDocumentStore.importPDFs(
+            from: [unsupportedFile], existing: [existing], in: store
+        )
+        let reloaded = PDFDocumentStore.load(from: store)
+
+        #expect(result.count == 1)
+        #expect(result.first?.id == existing.id)
+        #expect(reloaded.count == 1)
+        #expect(reloaded.first?.title == "Existing Study Notes")
+        #expect(FileManager.default.fileExists(atPath: existingPDF.path))
+    }
+
     @Test func dashboardLoadsInitialData() {
         let viewModel = DashboardViewModel(useStoredDocuments: false)
 
