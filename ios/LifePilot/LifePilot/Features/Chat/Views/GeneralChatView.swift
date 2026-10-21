@@ -51,6 +51,8 @@ struct GeneralChatView: View {
     @State private var draft = ""
     @State private var isSending = false
     @State private var errorMessage: String?
+    @State private var pendingActionProposals: [LifePilotTaskActionProposal] = []
+    @State private var showActionPreview = false
     @FocusState private var composerFocused: Bool
 
     private let store = LifePilotConversationStore()
@@ -176,6 +178,15 @@ struct GeneralChatView: View {
                 selectedID = conversations.first?.id
             }
         }
+        .sheet(isPresented: $showActionPreview) {
+            TaskActionPreviewSheet(
+                proposals: pendingActionProposals,
+                onConfirm: applyPendingActions,
+                onCancel: {
+                    pendingActionProposals = []
+                }
+            )
+        }
     }
 
     private var selectedConversationTitle: String {
@@ -286,22 +297,34 @@ struct GeneralChatView: View {
 
         Task {
             do {
+                let currentTasks = CalendarTaskStore().load()
+
+                if looksLikeCalendarAction(text) {
+                    let proposals = try await service.proposeTaskActions(
+                        message: text,
+                        tasks: currentTasks
+                    )
+                    if !proposals.isEmpty {
+                        pendingActionProposals = proposals
+                        showActionPreview = true
+                        appendAssistantMessage(
+                            "I prepared \\(proposals.count) calendar action(s). Review them and confirm before anything changes.",
+                            conversationID: conversations[index].id
+                        )
+                        isSending = false
+                        return
+                    }
+                }
+
                 let response = try await service.send(
                     message: text,
                     history: history,
-                    tasks: CalendarTaskStore().load()
+                    tasks: currentTasks
                 )
-                if let currentIndex = selectedIndex,
-                   conversations[currentIndex].id == conversations[index].id {
-                    conversations[currentIndex].messages.append(
-                        LifePilotChatMessage(
-                            role: .assistant,
-                            content: response.answer
-                        )
-                    )
-                    conversations[currentIndex].updatedAt = Date()
-                    persist()
-                }
+                appendAssistantMessage(
+                    response.answer,
+                    conversationID: conversations[index].id
+                )
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -309,5 +332,184 @@ struct GeneralChatView: View {
         }
     }
 
+    private func looksLikeCalendarAction(_ text: String) -> Bool {
+        let value = text.lowercased()
+        let keywords = [
+            "add task", "create task", "new task", "make a task",
+            "schedule a task", "edit task", "update task", "change task",
+            "rename task", "complete task", "finish task", "mark task",
+            "delete task", "remove task", "cancel task"
+        ]
+        return keywords.contains { value.contains($0) }
+    }
+
+    private func appendAssistantMessage(
+        _ content: String,
+        conversationID: UUID
+    ) {
+        guard let currentIndex = conversations.firstIndex(
+            where: { $0.id == conversationID }
+        ) else { return }
+        conversations[currentIndex].messages.append(
+            LifePilotChatMessage(role: .assistant, content: content)
+        )
+        conversations[currentIndex].updatedAt = Date()
+        persist()
+    }
+
+    private func applyPendingActions() {
+        let store = CalendarTaskStore()
+        var tasks = store.load()
+        let existingIDs = Set(tasks.map { $0.id.uuidString })
+
+        let valid = pendingActionProposals.allSatisfy { proposal in
+            switch proposal.action {
+            case "create":
+                return proposal.title?.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty == false
+            case "edit":
+                guard let id = proposal.task_id,
+                      existingIDs.contains(id) else { return false }
+                return (proposal.title?.isEmpty == false)
+                    || (proposal.dueDate?.isEmpty == false)
+                    || (proposal.priority?.isEmpty == false)
+            case "complete", "delete":
+                guard let id = proposal.task_id else { return false }
+                return existingIDs.contains(id)
+            default:
+                return false
+            }
+        }
+
+        guard valid else {
+            errorMessage = "A proposed task changed or is invalid. Nothing was saved; please ask LifePilot to prepare the actions again."
+            pendingActionProposals = []
+            showActionPreview = false
+            return
+        }
+
+        for proposal in pendingActionProposals {
+            switch proposal.action {
+            case "create":
+                guard let title = proposal.title, !title.isEmpty else { continue }
+                tasks.append(
+                    PlannerTask(
+                        title: title,
+                        dueDate: parseProposalDate(proposal.dueDate) ?? Date(),
+                        priority: PlannerPriority(rawValue: proposal.priority ?? "") ?? .normal
+                    )
+                )
+
+            case "edit":
+                guard let idString = proposal.task_id,
+                      let id = UUID(uuidString: idString),
+                      let index = tasks.firstIndex(where: { $0.id == id }) else {
+                    continue
+                }
+                if let title = proposal.title, !title.isEmpty {
+                    tasks[index].title = title
+                }
+                if let dateString = proposal.dueDate,
+                   let date = parseProposalDate(dateString) {
+                    tasks[index].dueDate = date
+                }
+                if let priorityString = proposal.priority,
+                   let priority = PlannerPriority(rawValue: priorityString) {
+                    tasks[index].priority = priority
+                }
+
+            case "complete":
+                guard let idString = proposal.task_id,
+                      let id = UUID(uuidString: idString),
+                      let index = tasks.firstIndex(where: { $0.id == id }) else {
+                    continue
+                }
+                tasks[index].isCompleted = true
+
+            case "delete":
+                guard let idString = proposal.task_id,
+                      let id = UUID(uuidString: idString) else { continue }
+                tasks.removeAll { $0.id == id }
+
+            default:
+                continue
+            }
+        }
+
+        store.save(tasks)
+        pendingActionProposals = []
+        showActionPreview = false
+    }
+
+    private func parseProposalDate(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        if let date = ISO8601DateFormatter().date(from: value) {
+            return date
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
+    }
+
     private let fortyCharacters = 40
+}
+
+private struct TaskActionPreviewSheet: View {
+    let proposals: [LifePilotTaskActionProposal]
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Nothing changes until you confirm these actions.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Section("Proposed changes") {
+                    ForEach(proposals) { proposal in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(proposal.action.capitalized)
+                                .font(.headline)
+                            Text(proposal.summary)
+                                .font(.subheadline)
+                            if let dueDate = proposal.dueDate {
+                                Text("Due: \\(dueDate)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let priority = proposal.priority {
+                                Text("Priority: \\(priority)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("Review actions")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", role: .cancel) {
+                        onCancel()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Confirm") {
+                        onConfirm()
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
 }

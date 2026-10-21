@@ -7,6 +7,7 @@ struct LifePilotChatRequest: Encodable {
     }
 
     struct TaskContext: Encodable {
+        let id: String
         let title: String
         let dueDate: String
         let priority: String
@@ -23,8 +24,89 @@ struct LifePilotChatResponse: Decodable {
     let model: String
 }
 
+struct LifePilotTaskActionProposal: Decodable, Identifiable {
+    let action: String
+    let task_id: String?
+    let title: String?
+    let dueDate: String?
+    let priority: String?
+
+    var id: String {
+        "\\(action)-\\(task_id ?? title ?? UUID().uuidString)"
+    }
+
+    var summary: String {
+        let taskTitle = title ?? "Untitled task"
+        let taskID = task_id ?? "unknown"
+
+        switch action {
+        case "create":
+            return "Create task: " + taskTitle
+        case "edit":
+            return "Edit task: " + (title ?? "Update requested fields")
+        case "complete":
+            return "Mark task complete (ID: " + taskID + ")"
+        case "delete":
+            return "Delete task (ID: " + taskID + ")"
+        default:
+            return "Unknown action"
+        }
+    }
+}
+
+private struct LifePilotTaskActionsRequest: Encodable {
+    let message: String
+    let tasks: [LifePilotChatRequest.TaskContext]
+}
+
+private struct LifePilotTaskActionsResponse: Decodable {
+    let proposals: [LifePilotTaskActionProposal]
+    let model: String
+}
+
 struct LifePilotChatService {
     private let baseURL = URL(string: "http://127.0.0.1:8000")!
+
+    func proposeTaskActions(
+        message: String,
+        tasks: [PlannerTask]
+    ) async throws -> [LifePilotTaskActionProposal] {
+        var request = URLRequest(
+            url: baseURL.appendingPathComponent("v1/chat/actions")
+        )
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let taskContexts = tasks.prefix(100).map { task in
+            LifePilotChatRequest.TaskContext(
+                id: task.id.uuidString,
+                title: task.title,
+                dueDate: ISO8601DateFormatter().string(from: task.dueDate),
+                priority: task.priority.rawValue,
+                isCompleted: task.isCompleted
+            )
+        }
+        request.httpBody = try JSONEncoder().encode(
+            LifePilotTaskActionsRequest(message: message, tasks: taskContexts)
+        )
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw LifePilotAIError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            if let error = try? JSONDecoder().decode(ChatServerError.self, from: data) {
+                throw LifePilotAIError.serverError(error.detail)
+            }
+            throw LifePilotAIError.serverError(
+                "AI server error (HTTP \\(http.statusCode))."
+            )
+        }
+        return try JSONDecoder().decode(
+            LifePilotTaskActionsResponse.self, from: data
+        ).proposals
+    }
 
     func send(
         message: String,
@@ -43,6 +125,7 @@ struct LifePilotChatService {
                 history: Array(history.suffix(10)),
                 tasks: tasks.prefix(100).map { task in
                     LifePilotChatRequest.TaskContext(
+                        id: task.id.uuidString,
                         title: task.title,
                         dueDate: ISO8601DateFormatter().string(from: task.dueDate),
                         priority: task.priority.rawValue,

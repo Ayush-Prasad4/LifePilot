@@ -222,3 +222,63 @@ def test_chat_includes_calendar_task_context(monkeypatch):
     assert "Urgent" in captured["input"]
     assert "2026-10-22T09:00:00Z" in captured["input"]
     assert "completed: False" in captured["input"]
+
+
+def test_task_actions_endpoint_returns_proposal(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [
+                    {"action": "create", "title": "Study", "priority": "Normal"}
+                ]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a study task", "tasks": []},
+    )
+    assert response.status_code == 200
+    assert response.json()["proposals"][0]["title"] == "Study"
+
+
+def test_task_actions_reject_unknown_task_id(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{"action": "delete", "task_id": "unknown"}]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={
+            "message": "Delete a task",
+            "tasks": [{
+                "id": "known",
+                "title": "Study",
+                "dueDate": "2026-10-21",
+                "priority": "Normal",
+                "isCompleted": False,
+            }],
+        },
+    )
+    assert response.status_code == 502
