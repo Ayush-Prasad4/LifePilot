@@ -22,6 +22,20 @@ final class LifePilotUITests: XCTestCase {
         // Put teardown code here. This method is called after the invocation of each test method in the class.
     }
 
+
+    @MainActor
+    func testPrimaryTabNavigation() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        for name in ["Home", "Documents", "Assistant", "Chat"] {
+            let tab = app.tabBars.buttons[name]
+            XCTAssertTrue(tab.waitForExistence(timeout: 5), "Missing tab: \\(name)")
+            tab.tap()
+            XCTAssertTrue(tab.isSelected, "Tab was not selected: \\(name)")
+        }
+    }
+
     @MainActor
     func testExample() throws {
         // UI tests must launch the application that they test.
