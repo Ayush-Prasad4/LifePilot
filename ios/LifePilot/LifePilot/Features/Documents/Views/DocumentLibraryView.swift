@@ -24,6 +24,7 @@ struct StoredPDFDocument: Identifiable, Codable, Sendable {
 
 enum PDFDocumentStoreError: Error {
     case invalidPDF
+    case documentNotFound
 }
 
 enum PDFDocumentStore {
@@ -130,7 +131,7 @@ enum PDFDocumentStore {
         )
         var updated = existing
         guard let index = updated.firstIndex(where: { $0.id == documentID }) else {
-            return existing
+            throw PDFDocumentStoreError.documentNotFound
         }
 
         if let title { updated[index].title = title }

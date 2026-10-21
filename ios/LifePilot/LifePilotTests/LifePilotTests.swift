@@ -60,6 +60,59 @@ struct LifePilotTests {
         #expect(reloaded.first?.category == "Study")
     }
 
+    @Test func updatingUnknownDocumentIDDoesNotChangeExistingDocument() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let document = StoredPDFDocument(
+            title: "Original title",
+            category: "Other",
+            filename: "existing-document.pdf"
+        )
+        let pdfURL = directory.appendingPathComponent(document.filename)
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+        }.write(to: pdfURL)
+
+        _ = try PDFDocumentStore.importPDFs(
+            from: [pdfURL],
+            existing: [],
+            in: directory
+        )
+        let savedDocument = try #require(
+            PDFDocumentStore.load(from: directory).first
+        )
+
+        var didThrow = false
+        do {
+            _ = try PDFDocumentStore.update(
+                documentID: UUID(),
+                title: "Unexpected rename",
+                category: "Finance",
+                existing: [savedDocument],
+                in: directory
+            )
+        } catch {
+            didThrow = true
+        }
+
+        #expect(didThrow)
+
+        let reloaded = PDFDocumentStore.load(from: directory)
+        #expect(reloaded.count == 1)
+        #expect(reloaded.first?.id == savedDocument.id)
+        #expect(reloaded.first?.title == "existing-document")
+        #expect(reloaded.first?.category == "Personal")
+    }
+
     @Test func deletingMissingFileRemovesDocumentFromMetadata() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
