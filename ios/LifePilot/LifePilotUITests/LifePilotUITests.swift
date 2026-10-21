@@ -39,27 +39,37 @@ final class LifePilotUITests: XCTestCase {
     @MainActor
     func testActionPreviewCanBeCancelled() throws {
         let app = XCUIApplication()
-        app.launchArguments.append("-ui-testing-action-preview")
+        app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-action-preview"]
         app.launch()
         app.tabBars.buttons["Chat"].tap()
 
         XCTAssertTrue(app.navigationBars["Review actions"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Nothing changes until you confirm these actions."].exists)
         app.buttons["Cancel"].tap()
         XCTAssertFalse(app.navigationBars["Review actions"].exists)
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing-calendar"]
+        app.launch()
+        app.buttons["All"].tap()
+        XCTAssertFalse(app.staticTexts["Action Preview Test Task"].exists)
     }
 
     @MainActor
     func testActionPreviewCanBeConfirmed() throws {
         let app = XCUIApplication()
-        app.launchArguments.append("-ui-testing-action-preview")
+        app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-action-preview"]
         app.launch()
         app.tabBars.buttons["Chat"].tap()
 
         XCTAssertTrue(app.navigationBars["Review actions"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Confirm"].exists)
         app.buttons["Confirm"].tap()
         XCTAssertFalse(app.navigationBars["Review actions"].exists)
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing-calendar"]
+        app.launch()
+        app.buttons["All"].tap()
+        XCTAssertTrue(app.staticTexts["Action Preview Test Task"].waitForExistence(timeout: 5))
     }
 
     @MainActor

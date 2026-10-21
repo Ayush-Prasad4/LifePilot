@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var selectedTab = 0
+    @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("-ui-testing-calendar") ? 4 : 0
 
     var body: some View {
         TabView(selection: $selectedTab) {

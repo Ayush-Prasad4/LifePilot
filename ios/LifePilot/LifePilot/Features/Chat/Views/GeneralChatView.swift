@@ -174,6 +174,9 @@ struct GeneralChatView: View {
             }
         }
         .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-reset-tasks") {
+                UserDefaults.standard.removeObject(forKey: "lifepilot.planner.tasks")
+            }
             if selectedID == nil {
                 selectedID = conversations.first?.id
             }
@@ -182,7 +185,7 @@ struct GeneralChatView: View {
                     LifePilotTaskActionProposal(
                         action: "create",
                         task_id: nil,
-                        title: "UI Test Task",
+                        title: "Action Preview Test Task",
                         dueDate: nil,
                         priority: "Normal"
                     )
