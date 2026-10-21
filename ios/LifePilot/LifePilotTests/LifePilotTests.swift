@@ -296,6 +296,110 @@ struct LifePilotTests {
         #expect(!filenames.contains(where: { $0.hasPrefix(".lifepilot-delete-") }))
     }
 
+
+    @Test func sameNamedPDFsImportAsSeparateDocuments() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let sourceA = root.appendingPathComponent("source-a", isDirectory: true)
+        let sourceB = root.appendingPathComponent("source-b", isDirectory: true)
+        let store = root.appendingPathComponent("store", isDirectory: true)
+
+        for directory in [sourceA, sourceB, store] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let firstSource = sourceA.appendingPathComponent("Lecture Notes.pdf")
+        let secondSource = sourceB.appendingPathComponent("Lecture Notes.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+            "LifePilot PDF fixture".draw(
+                at: CGPoint(x: 20, y: 20),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 12)]
+            )
+        }.write(to: firstSource)
+        let secondRenderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try secondRenderer.pdfData { context in
+            context.beginPage()
+            "LifePilot PDF fixture".draw(
+                at: CGPoint(x: 20, y: 20),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 12)]
+            )
+            "Second source".draw(
+                at: CGPoint(x: 20, y: 20),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 12)]
+            )
+        }.write(to: secondSource)
+
+        let imported = try PDFDocumentStore.importPDFs(
+            from: [firstSource, secondSource], existing: [], in: store
+        )
+
+        #expect(imported.count == 2)
+        #expect(imported.allSatisfy { $0.title == "Lecture Notes" })
+        #expect(Set(imported.map(\.filename)).count == 2)
+        #expect(imported.allSatisfy {
+            FileManager.default.fileExists(
+                atPath: store.appendingPathComponent($0.filename).path
+            )
+        })
+    }
+
+    @Test func reloadingStorePreservesMultipleImportedDocuments() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let store = root.appendingPathComponent("store", isDirectory: true)
+
+        for directory in [source, store] {
+            try FileManager.default.createDirectory(
+                at: directory, withIntermediateDirectories: true
+            )
+        }
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let firstPDF = source.appendingPathComponent("Exam Notes.pdf")
+        let secondPDF = source.appendingPathComponent("Invoice 2026.pdf")
+        let renderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try renderer.pdfData { context in
+            context.beginPage()
+            "LifePilot PDF fixture".draw(
+                at: CGPoint(x: 20, y: 20),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 12)]
+            )
+        }.write(to: firstPDF)
+        let secondRenderer = UIGraphicsPDFRenderer(
+            bounds: CGRect(x: 0, y: 0, width: 200, height: 200)
+        )
+        try secondRenderer.pdfData { context in
+            context.beginPage()
+            "LifePilot PDF fixture".draw(
+                at: CGPoint(x: 20, y: 20),
+                withAttributes: [.font: UIFont.systemFont(ofSize: 12)]
+            )
+        }.write(to: secondPDF)
+
+        let imported = try PDFDocumentStore.importPDFs(
+            from: [firstPDF, secondPDF], existing: [], in: store
+        )
+        let reloaded = PDFDocumentStore.load(from: store)
+
+        #expect(reloaded.count == 2)
+        #expect(Set(reloaded.map(\.id)) == Set(imported.map(\.id)))
+        #expect(Set(reloaded.map(\.title)) == Set(["Exam Notes", "Invoice 2026"]))
+        #expect(reloaded.first(where: { $0.title == "Exam Notes" })?.category == "Study")
+        #expect(reloaded.first(where: { $0.title == "Invoice 2026" })?.category == "Finance")
+    }
+
     @Test func dashboardLoadsInitialData() {
         let viewModel = DashboardViewModel(useStoredDocuments: false)
 
