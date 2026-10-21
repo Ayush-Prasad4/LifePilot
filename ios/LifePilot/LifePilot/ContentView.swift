@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 struct ContentView: View {
     init() {
@@ -105,6 +106,41 @@ struct CalendarTaskStore {
     func save(_ tasks: [PlannerTask]) {
         guard let data = try? JSONEncoder().encode(tasks) else { return }
         defaults.set(data, forKey: key)
+    }
+}
+
+final class TaskReminderManager {
+    static let shared = TaskReminderManager()
+    private let center = UNUserNotificationCenter.current()
+    private init() {}
+    func schedule(_ task: PlannerTask) {
+        cancel(task)
+        guard !task.isCompleted, task.dueDate > Date() else { return }
+        center.getNotificationSettings { settings in
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+                    if granted { self.enqueue(task) }
+                }
+            case .authorized, .provisional, .ephemeral: self.enqueue(task)
+            default: break
+            }
+        }
+    }
+    func cancel(_ task: PlannerTask) {
+        let id = task.id.uuidString
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        center.removeDeliveredNotifications(withIdentifiers: [id])
+    }
+    private func enqueue(_ task: PlannerTask) {
+        guard !task.isCompleted, task.dueDate > Date() else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Task due"
+        content.body = task.title
+        content.sound = .default
+        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: task.dueDate)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)
+        center.add(UNNotificationRequest(identifier: task.id.uuidString, content: content, trigger: trigger))
     }
 }
 
@@ -267,6 +303,7 @@ private struct CalendarView: View {
             }
             Button("Delete", role: .destructive) {
                 if let task = taskPendingDeletion {
+                    TaskReminderManager.shared.cancel(task)
                     tasks.removeAll { $0.id == task.id }
                     persist()
                 }
@@ -295,8 +332,11 @@ private struct CalendarView: View {
                         tasks[index].title = title
                         tasks[index].dueDate = date
                         tasks[index].priority = priority
+                        TaskReminderManager.shared.schedule(tasks[index])
                     } else {
-                        tasks.append(PlannerTask(title: title, dueDate: date, priority: priority))
+                        let item = PlannerTask(title: title, dueDate: date, priority: priority)
+                        tasks.append(item)
+                        TaskReminderManager.shared.schedule(item)
                     }
                     persist()
                 }
@@ -327,6 +367,7 @@ private struct CalendarView: View {
     private func update(_ task: PlannerTask, change: (inout PlannerTask) -> Void) {
         guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
         change(&tasks[index])
+        if tasks[index].isCompleted { TaskReminderManager.shared.cancel(tasks[index]) } else { TaskReminderManager.shared.schedule(tasks[index]) }
         persist()
     }
 
