@@ -315,6 +315,36 @@ def test_task_actions_reject_invalid_date(monkeypatch):
     assert "invalid task date" in response.json()["detail"]
 
 
+
+def test_task_actions_reject_datetime_when_date_only_is_required(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{
+                    "action": "create",
+                    "title": "Study",
+                    "dueDate": "2026-10-22T09:00:00Z",
+                }]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a study task", "tasks": []},
+    )
+
+    assert response.status_code == 502
+    assert "invalid task date" in response.json()["detail"]
+
 def test_task_actions_reject_conflicting_actions_for_same_task(monkeypatch):
     import json
     from types import SimpleNamespace

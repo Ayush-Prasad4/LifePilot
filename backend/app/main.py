@@ -352,12 +352,9 @@ def propose_task_actions(request: TaskActionRequest) -> TaskActionResponse:
                 if proposal.dueDate is not None:
                     try:
                         date_value = proposal.dueDate
-                        if "T" in date_value:
-                            datetime.fromisoformat(
-                                date_value.replace("Z", "+00:00")
-                            )
-                        else:
-                            date.fromisoformat(date_value)
+                        parsed_date = date.fromisoformat(date_value)
+                        if parsed_date.isoformat() != date_value:
+                            raise ValueError("Date must use YYYY-MM-DD.")
                     except ValueError:
                         raise HTTPException(
                             status_code=502,
