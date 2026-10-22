@@ -234,7 +234,10 @@ final class LifePilotUITests: XCTestCase {
 
         let editTitleField = app.textFields["What do you need to do?"]
         XCTAssertTrue(editTitleField.waitForExistence(timeout: 5))
-        editTitleField.tap()
+        // Tap near the end of the existing title before clearing it.
+        editTitleField.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)
+        ).tap()
         editTitleField.typeText(
             String(repeating: XCUIKeyboardKey.delete.rawValue,
                    count: "UI Edit Original Task".count)
