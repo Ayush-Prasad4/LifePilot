@@ -2,7 +2,8 @@
 import os
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+import re
 from typing import List, Literal
 
 from dotenv import load_dotenv
@@ -223,6 +224,37 @@ def answer_question(request: AnswerRequest):
     return generate_answer(request)
 
 
+def resolve_relative_due_date(message: str, current_date: date) -> date | None:
+    """Resolve one unambiguous relative date against an explicit reference date."""
+    pattern = re.compile(
+        r"\bin\s+(\d{1,3})\s+days?\b"
+        r"|\btomorrow\b"
+        r"|\btoday\b"
+        r"|\bnext\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        re.IGNORECASE,
+    )
+    matches = list(pattern.finditer(message))
+    if len(matches) != 1:
+        return None
+
+    match = matches[0]
+    if match.group(1) is not None:
+        days = int(match.group(1))
+        return current_date + timedelta(days=days)
+    if match.group(0).lower() == "tomorrow":
+        return current_date + timedelta(days=1)
+    if match.group(0).lower() == "today":
+        return current_date
+
+    weekdays = {
+        "monday": 0, "tuesday": 1, "wednesday": 2,
+        "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6,
+    }
+    target = weekdays[match.group(2).lower()]
+    days_ahead = (target - current_date.weekday()) % 7 or 7
+    return current_date + timedelta(days=days_ahead)
+
+
 class ProposedTaskAction(BaseModel):
     action: Literal["create", "edit", "complete", "delete"]
     task_id: str | None = None
@@ -245,6 +277,7 @@ class TaskActionResponse(BaseModel):
 def propose_task_actions(request: TaskActionRequest) -> TaskActionResponse:
     api_key = os.getenv("OPENAI_API_KEY")
     model = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+    current_date = date.today()
 
     if not api_key:
         raise HTTPException(
@@ -271,7 +304,7 @@ def propose_task_actions(request: TaskActionRequest) -> TaskActionResponse:
             ),
             input=json.dumps({
                 "output_format": "JSON",
-                "current_date": date.today().isoformat(),
+                "current_date": current_date.isoformat(),
                 "message": request.message,
                 "tasks": [task.model_dump() for task in request.tasks],
             }),
@@ -279,6 +312,15 @@ def propose_task_actions(request: TaskActionRequest) -> TaskActionResponse:
         )
         data = json.loads(response.output_text)
         result = TaskActionResponse(proposals=data.get("proposals", []), model=model)
+
+        resolved_date = resolve_relative_due_date(request.message, current_date)
+        date_proposals = [
+            proposal for proposal in result.proposals
+            if proposal.action in ("create", "edit")
+        ]
+        if resolved_date is not None and len(date_proposals) == 1:
+            date_proposals[0].dueDate = resolved_date.isoformat()
+
         valid_ids = {task.id for task in request.tasks if task.id}
 
         seen_existing_task_ids = set()

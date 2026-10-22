@@ -515,3 +515,58 @@ def test_task_actions_reject_invalid_priority(monkeypatch):
     )
 
     assert response.status_code == 502
+
+def test_relative_due_dates_are_resolved_deterministically():
+    from datetime import date
+    from app.main import resolve_relative_due_date
+
+    reference = date(2026, 10, 22)  # Thursday
+    cases = {
+        "today": "2026-10-22",
+        "tomorrow": "2026-10-23",
+        "in 3 days": "2026-10-25",
+        "next Friday": "2026-10-23",
+        "next Thursday": "2026-10-29",
+        "next Sunday": "2026-10-25",
+    }
+
+    for message, expected in cases.items():
+        assert resolve_relative_due_date(message, reference) == date.fromisoformat(expected)
+
+    assert resolve_relative_due_date("tomorrow or next Friday", reference) is None
+    assert resolve_relative_due_date("sometime soon", reference) is None
+
+
+def test_task_actions_override_model_date_for_unambiguous_relative_date(monkeypatch):
+    import json
+    from datetime import date, timedelta
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{
+                    "action": "create",
+                    "title": "Study",
+                    "dueDate": "1999-01-01",
+                    "priority": "Normal",
+                }]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a study task for tomorrow", "tasks": []},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["proposals"][0]["dueDate"] == (
+        date.today() + timedelta(days=1)
+    ).isoformat()
