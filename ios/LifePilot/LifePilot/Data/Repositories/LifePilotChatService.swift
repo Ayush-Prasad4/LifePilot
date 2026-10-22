@@ -65,12 +65,11 @@ private struct LifePilotTaskActionsResponse: Decodable {
 }
 
 struct LifePilotChatService {
-    private let baseURL = URL(string: "http://127.0.0.1:8000")!
-
     func proposeTaskActions(
         message: String,
         tasks: [PlannerTask]
     ) async throws -> [LifePilotTaskActionProposal] {
+        let baseURL = try LifePilotAPIConfiguration.baseURL()
         var request = URLRequest(
             url: baseURL.appendingPathComponent("v1/chat/actions")
         )
@@ -113,6 +112,7 @@ struct LifePilotChatService {
         history: [LifePilotChatRequest.Message],
         tasks: [PlannerTask]
     ) async throws -> LifePilotChatResponse {
+        let baseURL = try LifePilotAPIConfiguration.baseURL()
         var request = URLRequest(
             url: baseURL.appendingPathComponent("v1/chat")
         )

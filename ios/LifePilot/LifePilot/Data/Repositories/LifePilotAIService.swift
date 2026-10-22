@@ -24,27 +24,71 @@ struct AIAnswerResponse: Decodable {
 
 enum LifePilotAIError: LocalizedError {
     case invalidResponse
+    case configurationMissing
+    case insecureProductionURL
     case serverError(String)
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             return "The AI server returned an invalid response."
+        case .configurationMissing:
+            return "Configure LIFEPILOT_API_BASE_URL for this device."
+        case .insecureProductionURL:
+            return "The production AI server must use HTTPS."
         case .serverError(let message):
             return message
         }
     }
 }
 
-struct LifePilotAIService {
-    // For the iOS Simulator, the Mac's localhost is reachable here.
-    private let baseURL = URL(string: "http://127.0.0.1:8000")!
+enum LifePilotAPIConfiguration {
+    static func baseURL() throws -> URL {
+        if let configured = Bundle.main.object(
+            forInfoDictionaryKey: "LIFEPILOT_API_BASE_URL"
+        ) as? String {
+            let value = configured.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
 
+            if !value.isEmpty {
+                guard
+                    let url = URL(string: value),
+                    let scheme = url.scheme?.lowercased(),
+                    url.host != nil
+                else {
+                    throw LifePilotAIError.configurationMissing
+                }
+
+                #if targetEnvironment(simulator)
+                guard scheme == "http" || scheme == "https" else {
+                    throw LifePilotAIError.configurationMissing
+                }
+                #else
+                guard scheme == "https" else {
+                    throw LifePilotAIError.insecureProductionURL
+                }
+                #endif
+
+                return url
+            }
+        }
+
+        #if targetEnvironment(simulator)
+        return URL(string: "http://127.0.0.1:8000")!
+        #else
+        throw LifePilotAIError.configurationMissing
+        #endif
+    }
+}
+
+struct LifePilotAIService {
     func answer(
         question: String,
         evidence: [AIAnswerRequest.Evidence],
         history: [AIAnswerRequest.ConversationMessage] = []
     ) async throws -> AIAnswerResponse {
+        let baseURL = try LifePilotAPIConfiguration.baseURL()
         let url = baseURL.appendingPathComponent("v1/answer")
 
         var request = URLRequest(url: url)
