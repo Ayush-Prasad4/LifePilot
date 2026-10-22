@@ -177,6 +177,12 @@ struct GeneralChatView: View {
             if ProcessInfo.processInfo.arguments.contains("-ui-testing-reset-tasks") {
                 UserDefaults.standard.removeObject(forKey: "lifepilot.planner.tasks")
             }
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-corrupt-task-storage") {
+                UserDefaults.standard.set(
+                    Data("invalid task data".utf8),
+                    forKey: "lifepilot.planner.tasks"
+                )
+            }
             if selectedID == nil {
                 selectedID = conversations.first?.id
             }
@@ -455,7 +461,12 @@ struct GeneralChatView: View {
             }
         }
 
-        store.save(tasks)
+        guard store.save(tasks) else {
+            errorMessage = "Could not save calendar changes. Your existing task data was preserved."
+            pendingActionProposals = []
+            showActionPreview = false
+            return
+        }
         pendingActionProposals = []
         showActionPreview = false
     }

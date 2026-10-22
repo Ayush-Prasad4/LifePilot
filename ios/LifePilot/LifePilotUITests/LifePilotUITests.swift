@@ -101,6 +101,28 @@ final class LifePilotUITests: XCTestCase {
     }
 
     @MainActor
+    func testTaskActionSaveFailureShowsErrorAndPreservesExistingData() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ui-testing-reset-tasks",
+            "-ui-testing-corrupt-task-storage",
+            "-ui-testing-action-preview"
+        ]
+        app.launch()
+        app.tabBars.buttons["Chat"].tap()
+
+        XCTAssertTrue(app.navigationBars["Review actions"].waitForExistence(timeout: 5))
+        app.buttons["Confirm"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts[
+                "Could not save calendar changes. Your existing task data was preserved."
+            ].waitForExistence(timeout: 5)
+        )
+        XCTAssertFalse(app.navigationBars["Review actions"].exists)
+    }
+
+    @MainActor
     func testTaskDeletionRequiresConfirmation() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-calendar"]
