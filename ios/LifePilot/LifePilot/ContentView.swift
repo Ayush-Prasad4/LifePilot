@@ -15,6 +15,7 @@ struct ContentView: View {
         }
     }
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("-ui-testing-calendar") ? 4 : 0
 
     var body: some View {
@@ -67,6 +68,13 @@ struct ContentView: View {
                 Label("Settings", systemImage: "gearshape")
             }
             .tag(5)
+        }
+        .onAppear {
+            TaskReminderManager.shared.reconcile(CalendarTaskStore().load())
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            TaskReminderManager.shared.reconcile(CalendarTaskStore().load())
         }
     }
 }
@@ -129,35 +137,85 @@ struct CalendarTaskStore {
 final class TaskReminderManager {
     static let shared = TaskReminderManager()
     private let center = UNUserNotificationCenter.current()
+
     private init() {}
+
+    static func shouldScheduleReminder(
+        for task: PlannerTask,
+        at date: Date = Date()
+    ) -> Bool {
+        !task.isCompleted && task.dueDate > date
+    }
+
     func schedule(_ task: PlannerTask) {
         cancel(task)
-        guard !task.isCompleted, task.dueDate > Date() else { return }
+        guard Self.shouldScheduleReminder(for: task) else { return }
+
         center.getNotificationSettings { settings in
             switch settings.authorizationStatus {
             case .notDetermined:
                 self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
                     if granted { self.enqueue(task) }
                 }
-            case .authorized, .provisional, .ephemeral: self.enqueue(task)
-            default: break
+            case .authorized, .provisional, .ephemeral:
+                self.enqueue(task)
+            default:
+                break
             }
         }
     }
+
+    func reconcile(_ tasks: [PlannerTask]) {
+        center.getNotificationSettings { settings in
+            let notificationsAllowed: Bool
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                notificationsAllowed = true
+            default:
+                notificationsAllowed = false
+            }
+
+            for task in tasks {
+                guard Self.shouldScheduleReminder(for: task) else {
+                    self.cancel(task)
+                    continue
+                }
+
+                // Reconciliation never prompts for notification permission.
+                // Adding the same stable identifier refreshes, rather than duplicates, a request.
+                if notificationsAllowed {
+                    self.enqueue(task)
+                }
+            }
+        }
+    }
+
     func cancel(_ task: PlannerTask) {
         let id = task.id.uuidString
         center.removePendingNotificationRequests(withIdentifiers: [id])
         center.removeDeliveredNotifications(withIdentifiers: [id])
     }
+
     private func enqueue(_ task: PlannerTask) {
-        guard !task.isCompleted, task.dueDate > Date() else { return }
+        guard Self.shouldScheduleReminder(for: task) else { return }
+
         let content = UNMutableNotificationContent()
         content.title = "Task due"
         content.body = task.title
         content.sound = .default
-        let parts = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: task.dueDate)
+
+        let parts = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: task.dueDate
+        )
         let trigger = UNCalendarNotificationTrigger(dateMatching: parts, repeats: false)
-        center.add(UNNotificationRequest(identifier: task.id.uuidString, content: content, trigger: trigger))
+        center.add(
+            UNNotificationRequest(
+                identifier: task.id.uuidString,
+                content: content,
+                trigger: trigger
+            )
+        )
     }
 }
 

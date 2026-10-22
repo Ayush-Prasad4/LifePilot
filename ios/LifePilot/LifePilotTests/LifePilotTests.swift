@@ -5,6 +5,25 @@ import UIKit
 
 @MainActor
 struct LifePilotTests {
+    @Test func reminderEligibilityExcludesCompletedAndPastTasks() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let futureTask = PlannerTask(
+            title: "Future task",
+            dueDate: now.addingTimeInterval(3600),
+            priority: .normal
+        )
+        let pastTask = PlannerTask(
+            title: "Past task",
+            dueDate: now.addingTimeInterval(-3600),
+            priority: .normal
+        )
+        var completedTask = futureTask
+        completedTask.isCompleted = true
+
+        #expect(TaskReminderManager.shouldScheduleReminder(for: futureTask, at: now))
+        #expect(!TaskReminderManager.shouldScheduleReminder(for: pastTask, at: now))
+        #expect(!TaskReminderManager.shouldScheduleReminder(for: completedTask, at: now))
+    }
     @Test func plannerTasksPersistAndReload() throws {
         let suite = "LifePilotTests.\\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
