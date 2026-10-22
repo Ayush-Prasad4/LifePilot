@@ -537,6 +537,7 @@ private struct PlannerTaskEditor: View {
                         Text(item.rawValue).tag(item)
                     }
                 }
+                .accessibilityIdentifier("taskPriorityPicker")
             }
         }
         .alert("Couldn't Save Task", isPresented: $showingSaveError) {

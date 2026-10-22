@@ -234,20 +234,31 @@ final class LifePilotUITests: XCTestCase {
 
         let editTitleField = app.textFields["What do you need to do?"]
         XCTAssertTrue(editTitleField.waitForExistence(timeout: 5))
-        // Tap near the end of the existing title before clearing it.
-        editTitleField.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)
-        ).tap()
+        editTitleField.tap()
+        XCTAssertTrue(
+            app.keyboards.firstMatch.waitForExistence(timeout: 5),
+            "Keyboard should appear when editing the task title"
+        )
         editTitleField.typeText(
-            String(repeating: XCUIKeyboardKey.delete.rawValue,
-                   count: "UI Edit Original Task".count)
+            String(
+                repeating: XCUIKeyboardKey.delete.rawValue,
+                count: "UI Edit Original Task".count
+            )
         )
         editTitleField.typeText("UI Edit Updated Task")
 
         let priorityPicker = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "label CONTAINS %@", "Priority"))
+            .matching(identifier: "taskPriorityPicker")
             .firstMatch
-        XCTAssertTrue(priorityPicker.waitForExistence(timeout: 5))
+
+        XCTAssertTrue(
+            priorityPicker.waitForExistence(timeout: 5),
+            "Priority picker should exist on the Edit task screen"
+        )
+        XCTAssertTrue(
+            priorityPicker.isHittable,
+            "Priority picker should be hittable"
+        )
         priorityPicker.tap()
 
         let urgentOption = app.buttons["Urgent"]
