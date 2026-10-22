@@ -73,6 +73,34 @@ final class LifePilotUITests: XCTestCase {
     }
 
     @MainActor
+    func testInvalidActionShowsErrorAndDoesNotCreateTask() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ui-testing-reset-tasks",
+            "-ui-testing-invalid-action-preview"
+        ]
+        app.launch()
+        app.tabBars.buttons["Chat"].tap()
+
+        XCTAssertTrue(
+            app.navigationBars["Review actions"].waitForExistence(timeout: 5)
+        )
+        app.buttons["Confirm"].tap()
+
+        let error = app.staticTexts[
+            "A proposed task changed or is invalid. Nothing was saved; please ask LifePilot to prepare the actions again."
+        ]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+
+        app.terminate()
+        app.launchArguments = ["-ui-testing-calendar"]
+        app.launch()
+        app.buttons["All"].tap()
+
+        XCTAssertFalse(app.staticTexts["Invalid Preview Test Task"].exists)
+    }
+
+    @MainActor
     func testTaskDeletionRequiresConfirmation() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-calendar"]

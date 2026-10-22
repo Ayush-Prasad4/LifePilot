@@ -180,7 +180,18 @@ struct GeneralChatView: View {
             if selectedID == nil {
                 selectedID = conversations.first?.id
             }
-            if ProcessInfo.processInfo.arguments.contains("-ui-testing-action-preview") {
+            if ProcessInfo.processInfo.arguments.contains("-ui-testing-invalid-action-preview") {
+                pendingActionProposals = [
+                    LifePilotTaskActionProposal(
+                        action: "edit",
+                        task_id: UUID().uuidString,
+                        title: "Invalid Preview Test Task",
+                        dueDate: nil,
+                        priority: nil
+                    )
+                ]
+                showActionPreview = true
+            } else if ProcessInfo.processInfo.arguments.contains("-ui-testing-action-preview") {
                 pendingActionProposals = [
                     LifePilotTaskActionProposal(
                         action: "create",
