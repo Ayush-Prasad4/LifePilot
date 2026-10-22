@@ -385,7 +385,10 @@ struct GeneralChatView: View {
                 ).isEmpty == false
                 let dateIsValid = proposal.dueDate == nil
                     || parseProposalDate(proposal.dueDate) != nil
-                return titleIsValid && dateIsValid
+                let priorityIsValid = proposal.priority.map {
+                    PlannerPriority(rawValue: $0) != nil
+                } ?? true
+                return titleIsValid && dateIsValid && priorityIsValid
             case "edit":
                 guard let id = proposal.task_id,
                       existingIDs.contains(id) else { return false }
@@ -396,7 +399,10 @@ struct GeneralChatView: View {
                     || (proposal.priority?.isEmpty == false)
                 let dateIsValid = proposal.dueDate == nil
                     || parseProposalDate(proposal.dueDate) != nil
-                return hasChanges && dateIsValid
+                let priorityIsValid = proposal.priority.map {
+                    PlannerPriority(rawValue: $0) != nil
+                } ?? true
+                return hasChanges && dateIsValid && priorityIsValid
             case "complete", "delete":
                 guard let id = proposal.task_id else { return false }
                 return existingIDs.contains(id)
