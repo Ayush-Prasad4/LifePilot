@@ -123,6 +123,34 @@ final class LifePilotUITests: XCTestCase {
     }
 
     @MainActor
+    func testCalendarSaveFailureKeepsEditorOpenAndShowsError() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-ui-testing-reset-tasks",
+            "-ui-testing-corrupt-task-storage",
+            "-ui-testing-calendar"
+        ]
+        app.launch()
+
+        app.buttons["Add task"].tap()
+
+        let titleField = app.textFields["What do you need to do?"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.tap()
+        titleField.typeText("Must Not Be Saved")
+        app.buttons["Save"].tap()
+
+        let saveError = app.alerts["Couldn't Save Task"]
+        XCTAssertTrue(saveError.waitForExistence(timeout: 5))
+        saveError.buttons["OK"].tap()
+
+        XCTAssertTrue(
+            titleField.waitForExistence(timeout: 5),
+            "The editor should remain open when saving fails."
+        )
+    }
+
+    @MainActor
     func testTaskDeletionRequiresConfirmation() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-calendar"]

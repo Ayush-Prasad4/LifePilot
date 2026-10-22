@@ -7,6 +7,12 @@ struct ContentView: View {
         if ProcessInfo.processInfo.arguments.contains("-ui-testing-reset-tasks") {
             UserDefaults.standard.removeObject(forKey: "lifepilot.planner.tasks")
         }
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-corrupt-task-storage") {
+            UserDefaults.standard.set(
+                Data("invalid task data".utf8),
+                forKey: "lifepilot.planner.tasks"
+            )
+        }
     }
 
     @State private var selectedTab = ProcessInfo.processInfo.arguments.contains("-ui-testing-calendar") ? 4 : 0
@@ -171,6 +177,7 @@ private struct CalendarView: View {
     @State private var taskForActions: PlannerTask? = nil
     @State private var filter: PlannerFilter = .today
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
+    @State private var showingSaveError = false
 
     private var visibleTasks: [PlannerTask] {
         let calendar = Calendar.current
@@ -314,14 +321,21 @@ private struct CalendarView: View {
             }
             Button("Delete", role: .destructive) {
                 if let task = taskPendingDeletion {
-                    TaskReminderManager.shared.cancel(task)
-                    tasks.removeAll { $0.id == task.id }
-                    persist()
+                    var updatedTasks = tasks
+                    updatedTasks.removeAll { $0.id == task.id }
+                    if persist(updatedTasks) {
+                        TaskReminderManager.shared.cancel(task)
+                    }
                 }
                 taskPendingDeletion = nil
             }
         } message: {
             Text("This action cannot be undone.")
+        }
+        .alert("Couldn't Save Task", isPresented: $showingSaveError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your calendar changes could not be saved. Existing task data was preserved. Please try again after resolving the storage issue.")
         }
         .navigationTitle("Calendar")
         .toolbar {
@@ -338,18 +352,24 @@ private struct CalendarView: View {
         .sheet(isPresented: $showingEditor, onDismiss: { editingTask = nil }) {
             NavigationStack {
                 PlannerTaskEditor(task: editingTask) { title, date, priority in
+                    var updatedTasks = tasks
+                    let savedTask: PlannerTask
+
                     if let existing = editingTask,
-                       let index = tasks.firstIndex(where: { $0.id == existing.id }) {
-                        tasks[index].title = title
-                        tasks[index].dueDate = date
-                        tasks[index].priority = priority
-                        TaskReminderManager.shared.schedule(tasks[index])
+                       let index = updatedTasks.firstIndex(where: { $0.id == existing.id }) {
+                        updatedTasks[index].title = title
+                        updatedTasks[index].dueDate = date
+                        updatedTasks[index].priority = priority
+                        savedTask = updatedTasks[index]
                     } else {
                         let item = PlannerTask(title: title, dueDate: date, priority: priority)
-                        tasks.append(item)
-                        TaskReminderManager.shared.schedule(item)
+                        updatedTasks.append(item)
+                        savedTask = item
                     }
-                    persist()
+
+                    guard persist(updatedTasks, showError: false) else { return false }
+                    TaskReminderManager.shared.schedule(savedTask)
+                    return true
                 }
             }
         }
@@ -376,27 +396,43 @@ private struct CalendarView: View {
     }
 
     private func update(_ task: PlannerTask, change: (inout PlannerTask) -> Void) {
-        guard let index = tasks.firstIndex(where: { $0.id == task.id }) else { return }
-        change(&tasks[index])
-        if tasks[index].isCompleted { TaskReminderManager.shared.cancel(tasks[index]) } else { TaskReminderManager.shared.schedule(tasks[index]) }
-        persist()
+        var updatedTasks = tasks
+        guard let index = updatedTasks.firstIndex(where: { $0.id == task.id }) else { return }
+        change(&updatedTasks[index])
+        guard persist(updatedTasks) else { return }
+
+        if updatedTasks[index].isCompleted {
+            TaskReminderManager.shared.cancel(updatedTasks[index])
+        } else {
+            TaskReminderManager.shared.schedule(updatedTasks[index])
+        }
     }
 
-    private func persist() {
-        CalendarTaskStore().save(tasks)
+    @discardableResult
+    private func persist(
+        _ updatedTasks: [PlannerTask],
+        showError: Bool = true
+    ) -> Bool {
+        guard CalendarTaskStore().save(updatedTasks) else {
+            if showError { showingSaveError = true }
+            return false
+        }
+        tasks = updatedTasks
+        return true
     }
 }
 
 private struct PlannerTaskEditor: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var showingSaveError = false
     @State private var title: String
     @State private var dueDate: Date
     @State private var priority: PlannerPriority
 
     let task: PlannerTask?
-    let onSave: (String, Date, PlannerPriority) -> Void
+    let onSave: (String, Date, PlannerPriority) -> Bool
 
-    init(task: PlannerTask? = nil, onSave: @escaping (String, Date, PlannerPriority) -> Void) {
+    init(task: PlannerTask? = nil, onSave: @escaping (String, Date, PlannerPriority) -> Bool) {
         self.task = task
         self.onSave = onSave
         _title = State(initialValue: task?.title ?? "")
@@ -416,6 +452,11 @@ private struct PlannerTaskEditor: View {
                 }
             }
         }
+        .alert("Couldn't Save Task", isPresented: $showingSaveError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your calendar changes could not be saved. Existing task data was preserved. Please try again after resolving the storage issue.")
+        }
         .navigationTitle(task == nil ? "New task" : "Edit task")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -424,8 +465,11 @@ private struct PlannerTaskEditor: View {
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") {
-                    onSave(title.trimmingCharacters(in: .whitespacesAndNewlines), dueDate, priority)
-                    dismiss()
+                    if onSave(title.trimmingCharacters(in: .whitespacesAndNewlines), dueDate, priority) {
+                        dismiss()
+                    } else {
+                        showingSaveError = true
+                    }
                 }
                 .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
