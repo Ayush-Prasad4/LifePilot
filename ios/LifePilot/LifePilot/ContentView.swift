@@ -112,10 +112,12 @@ struct CalendarTaskStore {
     }
 
     func load() -> [PlannerTask] {
-        guard let data = defaults.data(forKey: key),
-              let tasks = try? JSONDecoder().decode([PlannerTask].self, from: data)
-        else { return [] }
-        return tasks
+        loadIfValid() ?? []
+    }
+
+    func loadIfValid() -> [PlannerTask]? {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return try? JSONDecoder().decode([PlannerTask].self, from: data)
     }
 
     @discardableResult
@@ -395,6 +397,9 @@ private struct CalendarView: View {
         } message: {
             Text("Your calendar changes could not be saved. Existing task data was preserved. Please try again after resolving the storage issue.")
         }
+        .onAppear {
+            refreshTasksFromStorage()
+        }
         .navigationTitle("Calendar")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -451,6 +456,11 @@ private struct CalendarView: View {
     private func isOverdue(_ task: PlannerTask) -> Bool {
         !task.isCompleted && task.dueDate < Date()
             && !Calendar.current.isDateInToday(task.dueDate)
+    }
+
+    private func refreshTasksFromStorage() {
+        guard let latestTasks = CalendarTaskStore().loadIfValid() else { return }
+        tasks = latestTasks
     }
 
     private func update(_ task: PlannerTask, change: (inout PlannerTask) -> Void) {

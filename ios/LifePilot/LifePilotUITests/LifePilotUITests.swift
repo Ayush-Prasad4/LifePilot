@@ -65,10 +65,14 @@ final class LifePilotUITests: XCTestCase {
         app.buttons["Confirm"].tap()
         XCTAssertFalse(app.navigationBars["Review actions"].exists)
 
-        app.terminate()
-        app.launchArguments = ["-ui-testing-calendar"]
-        app.launch()
-        app.buttons["All"].tap()
+        app.tabBars.buttons["More"].tap()
+        let calendarRow = app.staticTexts["Calendar"]
+        XCTAssertTrue(calendarRow.waitForExistence(timeout: 5))
+        calendarRow.tap()
+
+        let allFilter = app.buttons["All"]
+        XCTAssertTrue(allFilter.waitForExistence(timeout: 5))
+        allFilter.tap()
         XCTAssertTrue(app.staticTexts["Action Preview Test Task"].waitForExistence(timeout: 5))
     }
 
