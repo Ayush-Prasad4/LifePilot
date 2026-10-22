@@ -296,26 +296,32 @@ struct GeneralChatView: View {
 
     private func startNewChat() {
         let conversation = LifePilotConversation(title: "New chat")
-        conversations.insert(conversation, at: 0)
+        var updatedConversations = conversations
+        updatedConversations.insert(conversation, at: 0)
+
+        guard persist(updatedConversations) else { return }
         selectedID = conversation.id
-        errorMessage = nil
-        persist()
     }
 
     private func deleteSelectedChat() {
         guard let id = selectedID else { return }
-        conversations.removeAll { $0.id == id }
+
+        var updatedConversations = conversations
+        updatedConversations.removeAll { $0.id == id }
+
+        guard persist(updatedConversations) else { return }
         selectedID = conversations.first?.id
-        errorMessage = nil
-        persist()
     }
 
     @discardableResult
-    private func persist() -> Bool {
-        guard store.save(conversations) else {
+    private func persist(_ updatedConversations: [LifePilotConversation]) -> Bool {
+        guard store.save(updatedConversations) else {
             errorMessage = "Could not save chat history. Existing conversation data was preserved."
             return false
         }
+
+        conversations = updatedConversations
+        errorMessage = nil
         return true
     }
 
@@ -328,9 +334,7 @@ struct GeneralChatView: View {
         }
         guard let index = selectedIndex else { return }
 
-        draft = ""
-        errorMessage = nil
-
+        let conversationID = conversations[index].id
         let history = conversations[index].messages.map {
             LifePilotChatRequest.Message(
                 role: $0.role.rawValue,
@@ -338,15 +342,18 @@ struct GeneralChatView: View {
             )
         }
 
-        conversations[index].messages.append(
+        var updatedConversations = conversations
+        updatedConversations[index].messages.append(
             LifePilotChatMessage(role: .user, content: text)
         )
-        if conversations[index].title == "New chat" {
+        if updatedConversations[index].title == "New chat" {
             let title = text.replacingOccurrences(of: "\n", with: " ")
-            conversations[index].title = String(title.prefix( fortyCharacters ))
+            updatedConversations[index].title = String(title.prefix(fortyCharacters))
         }
-        conversations[index].updatedAt = Date()
-        persist()
+        updatedConversations[index].updatedAt = Date()
+
+        guard persist(updatedConversations) else { return }
+        draft = ""
         isSending = true
 
         Task {
@@ -362,8 +369,8 @@ struct GeneralChatView: View {
                         pendingActionProposals = proposals
                         showActionPreview = true
                         appendAssistantMessage(
-                            "I prepared \\(proposals.count) calendar action(s). Review them and confirm before anything changes.",
-                            conversationID: conversations[index].id
+                            "I prepared \(proposals.count) calendar action(s). Review them and confirm before anything changes.",
+                            conversationID: conversationID
                         )
                         isSending = false
                         return
@@ -377,7 +384,7 @@ struct GeneralChatView: View {
                 )
                 appendAssistantMessage(
                     response.answer,
-                    conversationID: conversations[index].id
+                    conversationID: conversationID
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -404,11 +411,13 @@ struct GeneralChatView: View {
         guard let currentIndex = conversations.firstIndex(
             where: { $0.id == conversationID }
         ) else { return }
-        conversations[currentIndex].messages.append(
+
+        var updatedConversations = conversations
+        updatedConversations[currentIndex].messages.append(
             LifePilotChatMessage(role: .assistant, content: content)
         )
-        conversations[currentIndex].updatedAt = Date()
-        persist()
+        updatedConversations[currentIndex].updatedAt = Date()
+        persist(updatedConversations)
     }
 
     private func applyPendingActions() {
