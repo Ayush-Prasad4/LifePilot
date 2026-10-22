@@ -423,3 +423,95 @@ def test_task_actions_allow_task_without_deadline(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["proposals"][0]["dueDate"] is None
+
+
+def test_task_actions_reject_blank_create_title(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{"action": "create", "title": "   "}]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a task", "tasks": []},
+    )
+
+    assert response.status_code == 502
+    assert "empty task title" in response.json()["detail"]
+
+
+def test_task_actions_reject_edit_without_changes(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    task_id = "task-edit-test"
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{"action": "edit", "task_id": task_id}]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={
+            "message": "Edit this task",
+            "tasks": [{
+                "id": task_id,
+                "title": "Study",
+                "dueDate": "2026-10-22",
+                "priority": "Normal",
+                "isCompleted": False,
+            }],
+        },
+    )
+
+    assert response.status_code == 502
+    assert "no changes" in response.json()["detail"]
+
+
+def test_task_actions_reject_invalid_priority(monkeypatch):
+    import json
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+    from app import main
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.responses = self
+
+        def create(self, **kwargs):
+            return SimpleNamespace(output_text=json.dumps({
+                "proposals": [{
+                    "action": "create",
+                    "title": "Study",
+                    "priority": "Critical",
+                }]
+            }))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main, "OpenAI", FakeOpenAI)
+    response = TestClient(main.app).post(
+        "/v1/chat/actions",
+        json={"message": "Add a task", "tasks": []},
+    )
+
+    assert response.status_code == 502
