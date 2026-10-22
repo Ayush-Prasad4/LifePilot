@@ -704,6 +704,55 @@ struct LifePilotTests {
         #expect(viewModel.documents.count == 3)
     }
 
+
+    @Test func chatConversationsPersistAndReload() throws {
+        let suite = "LifePilotChatTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = LifePilotConversationStore(
+            defaults: defaults, key: "conversations"
+        )
+        let conversation = LifePilotConversation(
+            title: "Test conversation",
+            messages: [
+                LifePilotChatMessage(role: .user, content: "Hello")
+            ]
+        )
+
+        #expect(store.save([conversation]))
+        #expect(store.loadIfValid() == [conversation])
+    }
+
+    @Test func corruptChatDataIsNotOverwrittenBySave() throws {
+        let suite = "LifePilotChatTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let key = "conversations"
+        let corruptData = Data("invalid chat data".utf8)
+        defaults.set(corruptData, forKey: key)
+
+        let store = LifePilotConversationStore(defaults: defaults, key: key)
+        #expect(!store.save([]))
+        #expect(defaults.data(forKey: key) == corruptData)
+        #expect(store.loadIfValid() == nil)
+    }
+
+    @Test func missingChatStorageIsAValidEmptyHistory() throws {
+        let suite = "LifePilotChatTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = LifePilotConversationStore(
+            defaults: defaults, key: "conversations"
+        )
+
+        #expect(store.loadIfValid() == [])
+        #expect(store.save([]))
+        #expect(store.load() == [])
+    }
+
 }
 
 

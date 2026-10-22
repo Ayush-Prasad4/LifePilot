@@ -32,16 +32,29 @@ struct LifePilotConversationStore {
     }
 
     func load() -> [LifePilotConversation] {
-        guard let data = defaults.data(forKey: key),
-              let conversations = try? JSONDecoder().decode(
-                [LifePilotConversation].self, from: data
-              ) else { return [] }
-        return conversations
+        loadIfValid() ?? []
     }
 
-    func save(_ conversations: [LifePilotConversation]) {
-        guard let data = try? JSONEncoder().encode(conversations) else { return }
+    func loadIfValid() -> [LifePilotConversation]? {
+        guard let data = defaults.data(forKey: key) else { return [] }
+        return try? JSONDecoder().decode(
+            [LifePilotConversation].self, from: data
+        )
+    }
+
+    @discardableResult
+    func save(_ conversations: [LifePilotConversation]) -> Bool {
+        // Preserve existing data if it is present but cannot be decoded.
+        if defaults.data(forKey: key) != nil, loadIfValid() == nil {
+            return false
+        }
+
+        guard let data = try? JSONEncoder().encode(conversations) else {
+            return false
+        }
+
         defaults.set(data, forKey: key)
+        return true
     }
 }
 
@@ -174,6 +187,10 @@ struct GeneralChatView: View {
             }
         }
         .onAppear {
+            if store.loadIfValid() == nil {
+                errorMessage = "Chat history could not be read. Existing conversation data was preserved."
+            }
+
             if ProcessInfo.processInfo.arguments.contains("-ui-testing-reset-tasks") {
                 UserDefaults.standard.removeObject(forKey: "lifepilot.planner.tasks")
             }
@@ -293,8 +310,13 @@ struct GeneralChatView: View {
         persist()
     }
 
-    private func persist() {
-        store.save(conversations)
+    @discardableResult
+    private func persist() -> Bool {
+        guard store.save(conversations) else {
+            errorMessage = "Could not save chat history. Existing conversation data was preserved."
+            return false
+        }
+        return true
     }
 
     private func sendMessage() {
