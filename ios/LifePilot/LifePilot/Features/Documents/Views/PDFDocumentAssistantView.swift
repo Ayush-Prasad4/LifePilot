@@ -11,6 +11,7 @@ struct PDFDocumentAssistantView: View {
     @State private var conversation: [AIAnswerRequest.ConversationMessage] = []
     @State private var aiError: String?
     @State private var isAskingAI = false
+    @State private var aiRequestID: UUID?
     @State private var isSearching = false
     @State private var searchTask: Task<PDFDocumentSearchOutcome?, Never>?
     @State private var activeSearchID: UUID?
@@ -136,6 +137,8 @@ struct PDFDocumentAssistantView: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Clear conversation", systemImage: "arrow.counterclockwise") {
+                            aiRequestID = nil
+                            isAskingAI = false
                             conversation.removeAll()
                             aiAnswer = nil
                             aiError = nil
@@ -190,6 +193,8 @@ struct PDFDocumentAssistantView: View {
             documents = PDFDocumentStore.load()
         }
         .onDisappear {
+            aiRequestID = nil
+            isAskingAI = false
             activeSearchID = nil
             searchTask?.cancel()
             searchTask = nil
@@ -234,6 +239,8 @@ struct PDFDocumentAssistantView: View {
     private func askAI() {
         guard !results.isEmpty else { return }
 
+        let requestID = UUID()
+        aiRequestID = requestID
         isAskingAI = true
         aiAnswer = nil
         aiError = nil
@@ -249,7 +256,12 @@ struct PDFDocumentAssistantView: View {
         }
 
         Task { @MainActor in
-            defer { isAskingAI = false }
+            defer {
+                if aiRequestID == requestID {
+                    aiRequestID = nil
+                    isAskingAI = false
+                }
+            }
 
             do {
                 let response = try await LifePilotAIService().answer(
@@ -257,11 +269,15 @@ struct PDFDocumentAssistantView: View {
                     evidence: evidence,
                     history: previousConversation
                 )
+
+                guard aiRequestID == requestID else { return }
+
                 conversation.append(.init(role: "user", content: currentQuestion))
                 conversation.append(.init(role: "assistant", content: response.answer))
                 conversation = Array(conversation.suffix(10))
                 aiAnswer = response.answer
             } catch {
+                guard aiRequestID == requestID else { return }
                 aiError = error.localizedDescription
             }
         }
