@@ -422,7 +422,8 @@ struct GeneralChatView: View {
 
     private func applyPendingActions() {
         let store = CalendarTaskStore()
-        var tasks = store.load()
+        let originalTasks = store.load()
+        var tasks = originalTasks
         guard TaskActionProposalValidator.validate(
             pendingActionProposals,
             existingTasks: tasks
@@ -498,6 +499,9 @@ struct GeneralChatView: View {
             showActionPreview = false
             return
         }
+
+        TaskReminderManager.shared.syncChanges(from: originalTasks, to: tasks)
+
         pendingActionProposals = []
         showActionPreview = false
     }

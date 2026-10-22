@@ -192,6 +192,25 @@ final class TaskReminderManager {
         }
     }
 
+    func syncChanges(from oldTasks: [PlannerTask], to newTasks: [PlannerTask]) {
+        let oldByID = Dictionary(uniqueKeysWithValues: oldTasks.map { ($0.id, $0) })
+        let newByID = Dictionary(uniqueKeysWithValues: newTasks.map { ($0.id, $0) })
+
+        for oldTask in oldTasks where newByID[oldTask.id] == nil {
+            cancel(oldTask)
+        }
+
+        for task in newTasks {
+            guard oldByID[task.id] != task else { continue }
+
+            if task.isCompleted {
+                cancel(task)
+            } else {
+                schedule(task)
+            }
+        }
+    }
+
     func cancel(_ task: PlannerTask) {
         let id = task.id.uuidString
         center.removePendingNotificationRequests(withIdentifiers: [id])
