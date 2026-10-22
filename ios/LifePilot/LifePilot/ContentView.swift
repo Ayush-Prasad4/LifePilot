@@ -104,9 +104,19 @@ struct CalendarTaskStore {
         return tasks
     }
 
-    func save(_ tasks: [PlannerTask]) {
-        guard let data = try? JSONEncoder().encode(tasks) else { return }
+    @discardableResult
+    func save(_ tasks: [PlannerTask]) -> Bool {
+        // Never overwrite existing task data if it cannot be decoded.
+        if let existingData = defaults.data(forKey: key),
+           (try? JSONDecoder().decode([PlannerTask].self, from: existingData)) == nil {
+            return false
+        }
+
+        guard let data = try? JSONEncoder().encode(tasks) else {
+            return false
+        }
         defaults.set(data, forKey: key)
+        return true
     }
 }
 

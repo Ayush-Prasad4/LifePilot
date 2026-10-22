@@ -21,6 +21,26 @@ struct LifePilotTests {
         #expect(store.load() == [task])
     }
 
+    @Test func corruptTaskDataIsNotOverwrittenBySave() throws {
+        let suite = "LifePilotTests.\\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let key = "tasks"
+        let corruptData = Data("invalid task data".utf8)
+        defaults.set(corruptData, forKey: key)
+
+        let store = CalendarTaskStore(defaults: defaults, key: key)
+        let task = PlannerTask(
+            title: "Preserve existing data",
+            dueDate: Date(timeIntervalSince1970: 1_800_000_000),
+            priority: .normal
+        )
+
+        #expect(!store.save([task]))
+        #expect(defaults.data(forKey: key) == corruptData)
+    }
+
     @Test func taskActionValidatorAcceptsValidCreateProposal() {
         let proposal = LifePilotTaskActionProposal(
             action: "create",
