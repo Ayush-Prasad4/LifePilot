@@ -375,43 +375,10 @@ struct GeneralChatView: View {
     private func applyPendingActions() {
         let store = CalendarTaskStore()
         var tasks = store.load()
-        let existingIDs = Set(tasks.map { $0.id.uuidString })
-
-        let valid = pendingActionProposals.allSatisfy { proposal in
-            switch proposal.action {
-            case "create":
-                let titleIsValid = proposal.title?.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ).isEmpty == false
-                let dateIsValid = proposal.dueDate == nil
-                    || parseProposalDate(proposal.dueDate) != nil
-                let priorityIsValid = proposal.priority.map {
-                    PlannerPriority(rawValue: $0) != nil
-                } ?? true
-                return titleIsValid && dateIsValid && priorityIsValid
-            case "edit":
-                guard let id = proposal.task_id,
-                      existingIDs.contains(id) else { return false }
-                let hasChanges = (proposal.title?.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                ).isEmpty == false)
-                    || (proposal.dueDate?.isEmpty == false)
-                    || (proposal.priority?.isEmpty == false)
-                let dateIsValid = proposal.dueDate == nil
-                    || parseProposalDate(proposal.dueDate) != nil
-                let priorityIsValid = proposal.priority.map {
-                    PlannerPriority(rawValue: $0) != nil
-                } ?? true
-                return hasChanges && dateIsValid && priorityIsValid
-            case "complete", "delete":
-                guard let id = proposal.task_id else { return false }
-                return existingIDs.contains(id)
-            default:
-                return false
-            }
-        }
-
-        guard valid else {
+        guard TaskActionProposalValidator.validate(
+            pendingActionProposals,
+            existingTasks: tasks
+        ) else {
             errorMessage = "A proposed task changed or is invalid. Nothing was saved; please ask LifePilot to prepare the actions again."
             pendingActionProposals = []
             showActionPreview = false
@@ -483,14 +450,7 @@ struct GeneralChatView: View {
     }
 
     private func parseProposalDate(_ value: String?) -> Date? {
-        guard let value else { return nil }
-        if let date = ISO8601DateFormatter().date(from: value) {
-            return date
-        }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: value)
+        TaskActionProposalValidator.parseDate(value)
     }
 
     private let fortyCharacters = 40

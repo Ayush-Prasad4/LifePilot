@@ -21,6 +21,57 @@ struct LifePilotTests {
         #expect(store.load() == [task])
     }
 
+    @Test func taskActionValidatorAcceptsValidCreateProposal() {
+        let proposal = LifePilotTaskActionProposal(
+            action: "create",
+            task_id: nil,
+            title: "Submit assignment",
+            dueDate: "2026-10-23",
+            priority: "Normal"
+        )
+
+        #expect(TaskActionProposalValidator.validate(
+            [proposal], existingTasks: []
+        ))
+    }
+
+    @Test func taskActionValidatorRejectsTimestampDate() {
+        #expect(TaskActionProposalValidator.parseDate(
+            "2026-10-23T10:00:00Z"
+        ) == nil)
+    }
+
+    @Test func taskActionValidatorRejectsImpossibleDate() {
+        #expect(TaskActionProposalValidator.parseDate("2026-02-30") == nil)
+    }
+
+    @Test func taskActionValidatorRejectsConflictingActionsForSameTask() {
+        let task = PlannerTask(
+            title: "Original task",
+            dueDate: Date(timeIntervalSince1970: 1_800_000_000),
+            priority: .normal
+        )
+
+        let edit = LifePilotTaskActionProposal(
+            action: "edit",
+            task_id: task.id.uuidString,
+            title: "Updated task",
+            dueDate: nil,
+            priority: nil
+        )
+        let delete = LifePilotTaskActionProposal(
+            action: "delete",
+            task_id: task.id.uuidString,
+            title: nil,
+            dueDate: nil,
+            priority: nil
+        )
+
+        #expect(!TaskActionProposalValidator.validate(
+            [edit, delete], existingTasks: [task]
+        ))
+    }
+
     @Test func importingInvalidPDFThrowsWithoutImportingIt() throws {
         let temporaryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
