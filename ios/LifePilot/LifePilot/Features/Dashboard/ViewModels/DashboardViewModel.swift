@@ -83,7 +83,7 @@ final class DashboardViewModel: ObservableObject {
 
         let storedDocuments = PDFDocumentStore.load()
         guard !storedDocuments.isEmpty else {
-            return repository.fetchDocuments()
+            return []
         }
 
         return storedDocuments.map { document in
