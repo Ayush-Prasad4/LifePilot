@@ -152,6 +152,99 @@ final class LifePilotUITests: XCTestCase {
     }
 
     @MainActor
+    func testCalendarTaskCanBeEdited() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-calendar"]
+        app.launch()
+
+        let allFilter = app.buttons["All"]
+        XCTAssertTrue(allFilter.waitForExistence(timeout: 5))
+        allFilter.tap()
+
+        app.buttons["Add task"].tap()
+
+        let titleField = app.textFields["What do you need to do?"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.tap()
+        titleField.typeText("UI Edit Original Task")
+        app.buttons["Save"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["UI Edit Original Task"].waitForExistence(timeout: 5)
+        )
+
+        app.buttons["Task actions"].firstMatch.tap()
+        app.buttons["Edit"].tap()
+
+        XCTAssertTrue(app.navigationBars["Edit task"].waitForExistence(timeout: 5))
+
+        let editTitleField = app.textFields["What do you need to do?"]
+        XCTAssertTrue(editTitleField.waitForExistence(timeout: 5))
+        editTitleField.tap()
+        editTitleField.typeText(
+            String(repeating: XCUIKeyboardKey.delete.rawValue,
+                   count: "UI Edit Original Task".count)
+        )
+        editTitleField.typeText("UI Edit Updated Task")
+
+        let priorityPicker = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS %@", "Priority"))
+            .firstMatch
+        XCTAssertTrue(priorityPicker.waitForExistence(timeout: 5))
+        priorityPicker.tap()
+
+        let urgentOption = app.buttons["Urgent"]
+        XCTAssertTrue(urgentOption.waitForExistence(timeout: 5))
+        urgentOption.tap()
+
+        app.buttons["Save"].tap()
+
+        XCTAssertTrue(
+            app.staticTexts["UI Edit Updated Task"].waitForExistence(timeout: 5)
+        )
+        XCTAssertFalse(app.staticTexts["UI Edit Original Task"].exists)
+        XCTAssertTrue(app.staticTexts["Urgent"].exists)
+    }
+
+    @MainActor
+    func testCalendarTaskCanBeCompletedAndReopened() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-reset-tasks", "-ui-testing-calendar"]
+        app.launch()
+
+        let allFilter = app.buttons["All"]
+        XCTAssertTrue(allFilter.waitForExistence(timeout: 5))
+        allFilter.tap()
+
+        app.buttons["Add task"].tap()
+
+        let titleField = app.textFields["What do you need to do?"]
+        XCTAssertTrue(titleField.waitForExistence(timeout: 5))
+        titleField.tap()
+        titleField.typeText("UI Completion Lifecycle Task")
+        app.buttons["Save"].tap()
+
+        let taskTitle = app.staticTexts["UI Completion Lifecycle Task"]
+        XCTAssertTrue(taskTitle.waitForExistence(timeout: 5))
+
+        app.buttons["Task actions"].firstMatch.tap()
+        app.buttons["Complete"].tap()
+
+        let completedFilter = app.buttons["Completed"]
+        XCTAssertTrue(completedFilter.waitForExistence(timeout: 5))
+        completedFilter.tap()
+        XCTAssertTrue(taskTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Mark incomplete"].exists)
+
+        app.buttons["Task actions"].firstMatch.tap()
+        app.buttons["Mark Incomplete"].tap()
+
+        allFilter.tap()
+        XCTAssertTrue(taskTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Complete task"].exists)
+    }
+
+    @MainActor
     func testExample() throws {
         // UI tests must launch the application that they test.
         let app = XCUIApplication()
